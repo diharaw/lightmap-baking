@@ -1,0 +1,9 @@
+[submodule "external/embree"]
+	path = external/embree
+	url = https://github.com/embree/embree.git
+[submodule "external/xatlas"]
+	path = external/xatlas
+	url = https://github.com/jpcy/xatlas.git
+[submodule "external/dwSampleFramework"]
+	path = external/dwSampleFramework
+	url = https://github.com/diharaw/dwSampleFramework.git
