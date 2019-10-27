@@ -19,6 +19,8 @@
 
 #define CAMERA_FAR_PLANE 1000.0f
 #define LIGHTMAP_TEXTURE_SIZE 4096
+#define LIGHTMAP_CHART_PADDING 6
+#define LIGHTMAP_SPP 1
 
 struct GlobalUniforms
 {
@@ -48,7 +50,6 @@ struct LightmapMesh
     std::unique_ptr<dw::VertexArray>  vao;
 };
 
-
 class Lightmaps : public dw::Application
 {
 protected:
@@ -72,6 +73,9 @@ protected:
         // Create camera.
         create_camera();
 
+		initialize_lightmap();
+		bake_lightmap();
+
         m_transform = glm::mat4(1.0f);
 
         return true;
@@ -86,7 +90,6 @@ protected:
 
         update_global_uniforms(m_global_uniforms);
 
-		initialize_lightmap();
         render_lit_scene();
         visualize_lightmap();
 
@@ -279,6 +282,19 @@ private:
             else if (GLAD_GL_INTEL_conservative_rasterization)
                 glDisable(GL_INTEL_conservative_rasterization);
         }
+
+		glFinish();
+
+		m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+        m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+
+		GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
+        GL_CHECK_ERROR(glBindTexture(m_lightmap_pos_texture->target(), m_lightmap_pos_texture->id()));
+        GL_CHECK_ERROR(glGetTexImage(m_lightmap_pos_texture->target(), 0, m_lightmap_pos_texture->format(), m_lightmap_pos_texture->type(), m_ray_positions.data()));
+
+		GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture->target(), m_lightmap_normal_texture->id()));
+        GL_CHECK_ERROR(glGetTexImage(m_lightmap_normal_texture->target(), 0, m_lightmap_normal_texture->format(), m_lightmap_normal_texture->type(), m_ray_directions.data()));
+        GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture->target(), 0));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -373,9 +389,9 @@ private:
         m_lightmap_pos_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
         m_lightmap_normal_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
 
-        m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_texture->set_min_filter(GL_LINEAR_MIPMAP_LINEAR);
-        m_lightmap_texture->set_mag_filter(GL_LINEAR);
+        //m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        //m_lightmap_texture->set_min_filter(GL_LINEAR_MIPMAP_LINEAR);
+        //m_lightmap_texture->set_mag_filter(GL_LINEAR);
 
         m_lightmap_fbo = std::make_unique<dw::Framebuffer>();
 
@@ -526,6 +542,7 @@ private:
 
 		xatlas::PackOptions pack_options;
 
+		pack_options.padding    = LIGHTMAP_CHART_PADDING;
 		pack_options.resolution = LIGHTMAP_TEXTURE_SIZE;
 
         xatlas::PackCharts(atlas, pack_options);
@@ -608,9 +625,9 @@ private:
             dw::SubMesh& submesh = mesh.submeshes[i];
 
 			if (program->set_uniform("s_Lightmap", 0))
-                m_lightmap_pos_texture->bind(0);
+                m_lightmap_texture->bind(0);
 
-			program->set_uniform("i_FromLightmap", (int)m_mouse_look);
+			program->set_uniform("i_FromLightmap", 1);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -671,10 +688,100 @@ private:
         m_visualize_lightmap_program->use();
 		
 		if (m_visualize_lightmap_program->set_uniform("s_Lightmap", 0))
-            m_lightmap_pos_texture->bind(0);
+            m_lightmap_texture->bind(0);
 		
 		// Render fullscreen triangle
 		glDrawArrays(GL_TRIANGLES, 0, 3);
+	}
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+	float drand48()
+    {
+        return distribution(generator);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void bake_lightmap()
+	{
+        std::vector<glm::vec3> framebuffer;
+        framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+
+		distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
+
+		glm::vec3 light_dir = -glm::normalize(glm::vec3(0.0f, -1.0f, 0.2f));
+        float w = 1.0f / float(LIGHTMAP_SPP);
+
+		#pragma omp parallel for
+		for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
+		{
+			for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
+			{
+				glm::vec3 color = glm::vec3(0.0f);
+
+				glm::vec3 direction = m_ray_directions[LIGHTMAP_TEXTURE_SIZE * y + x];
+                glm::vec3 position  = m_ray_positions[LIGHTMAP_TEXTURE_SIZE * y + x] + direction * 0.1f;
+
+				// Check if this is a valid lightmap texel
+                if (direction.x == 0.0f && direction.y == 0.0f && direction.z == 0.0f)
+                    continue;
+
+				for (int sample = 0; sample < LIGHTMAP_SPP; sample++)
+				{
+				    float u = float(x + drand48()) / float(LIGHTMAP_TEXTURE_SIZE);
+				    float v = float(y + drand48()) / float(LIGHTMAP_TEXTURE_SIZE);
+
+				    /*RTCRayHit rayhit;
+
+				    rayhit.ray.dir_x = light_dir.x;
+				    rayhit.ray.dir_y = light_dir.y;
+				    rayhit.ray.dir_z = light_dir.z;
+
+				    rayhit.ray.org_x = position.x;
+				    rayhit.ray.org_y = position.y;
+				    rayhit.ray.org_z = position.z;
+
+				    rayhit.ray.tnear     = 0;
+				    rayhit.ray.tfar      = INFINITY;
+				    rayhit.ray.mask      = 0;
+				    rayhit.ray.flags     = 0;
+				    rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
+				    rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;*/
+
+					RTCRay rayhit;
+
+				    rayhit.dir_x = light_dir.x;
+				    rayhit.dir_y = light_dir.y;
+				    rayhit.dir_z = light_dir.z;
+
+				    rayhit.org_x = position.x;
+				    rayhit.org_y = position.y;
+				    rayhit.org_z = position.z;
+
+				    rayhit.tnear     = 0;
+				    rayhit.tfar      = INFINITY;
+				    rayhit.mask      = 0;
+				    rayhit.flags     = 0;
+         
+				    rtcOccluded1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+
+					// Is in shadow?
+				    if (rayhit.tfar != INFINITY)
+				    {
+						color = glm::vec3(0.5f) * w;
+				    }
+					else
+					{
+						color = glm::vec3(1.0f) * w;
+					}
+				}
+
+				framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
+			}
+		}
+
+		m_lightmap_texture->set_data(0, 0, framebuffer.data());
 	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -752,6 +859,9 @@ private:
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
 
+	std::vector<glm::vec3> m_ray_positions;
+    std::vector<glm::vec3> m_ray_directions;
+
     // Camera.
     LightmapMesh                m_unwrapped_mesh;
     std::unique_ptr<dw::Camera> m_main_camera;
@@ -776,9 +886,12 @@ private:
     RTCGeometry         m_embree_triangle_mesh = nullptr;
     RTCIntersectContext m_embree_intersect_context;
 
-   glm::vec3 m_hit_pos;
+    glm::vec3 m_hit_pos;
     bool      is_hit                       = false;
     bool    m_enable_conservative_raster   = true;
+
+	std::default_random_engine            generator;
+    std::uniform_real_distribution<float> distribution;
 
     // Camera orientation.
     float m_camera_x;
