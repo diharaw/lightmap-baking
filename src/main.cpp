@@ -40,6 +40,14 @@ struct LightmapVertex
     glm::vec3 bitangent;
 };
 
+struct LightmapMesh
+{
+    std::vector<dw::SubMesh> submeshes;
+    std::unique_ptr<dw::VertexBuffer> vbo;
+    std::unique_ptr<dw::IndexBuffer>  ibo;
+    std::unique_ptr<dw::VertexArray>  vao;
+};
+
 
 class Lightmaps : public dw::Application
 {
@@ -52,17 +60,11 @@ protected:
         if (!load_scene())
             return false;
 
-		if (!lightmap_uv_unwrap())
-            return false;
-
         // Create GPU resources.
         if (!create_shaders())
             return false;
 
         if (!create_uniform_buffer())
-            return false;
-
-        if (!initialize_embree())
             return false;
 
         create_framebuffers();
@@ -71,8 +73,6 @@ protected:
         create_camera();
 
         m_transform = glm::mat4(1.0f);
-
-        initialize_lightmap();
 
         return true;
     }
@@ -86,8 +86,14 @@ protected:
 
         update_global_uniforms(m_global_uniforms);
 
-        //render_lit_scene();
+		initialize_lightmap();
+        render_lit_scene();
         visualize_lightmap();
+
+		if (is_hit)
+            m_debug_draw.sphere(2.0f, m_hit_pos, glm::vec3(1.0f, 0.0f, 0.0f));
+
+		m_debug_draw.render(nullptr, m_width, m_height, m_global_uniforms.view_proj);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -97,8 +103,6 @@ protected:
         rtcReleaseGeometry(m_embree_triangle_mesh);
         rtcReleaseScene(m_embree_scene);
         rtcReleaseDevice(m_embree_device);
-
-        dw::Mesh::unload(m_mesh);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -156,40 +160,41 @@ protected:
     {
         if (code == GLFW_MOUSE_BUTTON_LEFT)
         {
-            //double xpos, ypos;
-            //glfwGetCursorPos(m_window, &xpos, &ypos);
+            double xpos, ypos;
+            glfwGetCursorPos(m_window, &xpos, &ypos);
 
-            //glm::vec4 ndc_pos      = glm::vec4((2.0f * float(xpos)) / float(m_width) - 1.0f, 1.0 - (2.0f * float(ypos)) / float(m_height), -1.0f, 1.0f);
-            //glm::vec4 view_coords  = glm::inverse(m_main_camera->m_projection) * ndc_pos;
-            //glm::vec4 world_coords = glm::inverse(m_main_camera->m_view) * glm::vec4(view_coords.x, view_coords.y, -1.0f, 0.0f);
+            glm::vec4 ndc_pos      = glm::vec4((2.0f * float(xpos)) / float(m_width) - 1.0f, 1.0 - (2.0f * float(ypos)) / float(m_height), -1.0f, 1.0f);
+            glm::vec4 view_coords  = glm::inverse(m_main_camera->m_projection) * ndc_pos;
+            glm::vec4 world_coords = glm::inverse(m_main_camera->m_view) * glm::vec4(view_coords.x, view_coords.y, -1.0f, 0.0f);
 
-            //glm::vec3 ray_dir = glm::normalize(glm::vec3(world_coords));
+            glm::vec3 ray_dir = glm::normalize(glm::vec3(world_coords));
 
-            //RTCRayHit rayhit;
+            RTCRayHit rayhit;
 
-            //rayhit.ray.dir_x = ray_dir.x;
-            //rayhit.ray.dir_y = ray_dir.y;
-            //rayhit.ray.dir_z = ray_dir.z;
+            rayhit.ray.dir_x = ray_dir.x;
+            rayhit.ray.dir_y = ray_dir.y;
+            rayhit.ray.dir_z = ray_dir.z;
 
-            //rayhit.ray.org_x = m_main_camera->m_position.x;
-            //rayhit.ray.org_y = m_main_camera->m_position.y;
-            //rayhit.ray.org_z = m_main_camera->m_position.z;
+            rayhit.ray.org_x = m_main_camera->m_position.x;
+            rayhit.ray.org_y = m_main_camera->m_position.y;
+            rayhit.ray.org_z = m_main_camera->m_position.z;
 
-            //rayhit.ray.tnear     = 0;
-            //rayhit.ray.tfar      = INFINITY;
-            //rayhit.ray.mask      = 0;
-            //rayhit.ray.flags     = 0;
-            //rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
-            //rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
+            rayhit.ray.tnear     = 0;
+            rayhit.ray.tfar      = INFINITY;
+            rayhit.ray.mask      = 0;
+            rayhit.ray.flags     = 0;
+            rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
+            rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
 
-            //rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+            rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
 
-            //if (rayhit.ray.tfar != INFINITY)
-            //{
-            //   
-            //}
-            //else
-            //    rayhit.ray.tfar = INFINITY;
+            if (rayhit.ray.tfar != INFINITY)
+            {
+                is_hit = true;
+                m_hit_pos = m_main_camera->m_position + ray_dir * rayhit.ray.tfar;
+            }
+            else
+                rayhit.ray.tfar = INFINITY;
         }
 
         // Enable mouse look.
@@ -256,19 +261,12 @@ private:
         // Bind shader program.
         m_lightmap_program->use();
 
-        // Bind uniform buffers.
-        m_global_ubo->bind_base(0);
-
-        m_lightmap_program->set_uniform("u_Model", m_transform);
-
         // Bind vertex array.
-        m_uv_unwrapped_vao->bind();
+        m_unwrapped_mesh.vao->bind();
 
-        dw::SubMesh* submeshes = m_mesh->sub_meshes();
-
-        for (uint32_t i = 0; i < m_mesh->sub_mesh_count(); i++)
+        for (uint32_t i = 0; i < m_unwrapped_mesh.submeshes.size(); i++)
         {
-            dw::SubMesh& submesh = submeshes[i];
+            dw::SubMesh& submesh = m_unwrapped_mesh.submeshes[i];
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -400,111 +398,147 @@ private:
 
     bool load_scene()
     {
-        m_mesh = dw::Mesh::load("mesh/sponza.obj");
+        dw::Mesh* mesh = dw::Mesh::load("mesh/sponza.obj");
 
-        if (!m_mesh)
+        if (!mesh)
         {
             DW_LOG_FATAL("Failed to load mesh!");
             return false;
         }
+
+		if (!lightmap_uv_unwrap(mesh))
+            return false;
+
+        if (!initialize_embree(mesh))
+            return false;
+
+		dw::Mesh::unload(mesh);
 
         return true;
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	bool create_lightmap_uv_unwrapped_mesh(xatlas::Atlas* atlas)
+	bool create_lightmap_uv_unwrapped_mesh(xatlas::Atlas* atlas, dw::Mesh* mesh)
     {
-        dw::Vertex* vertex_ptr = m_mesh->vertices();
+        dw::Vertex* vertex_ptr = mesh->vertices();
 
-		std::vector<LightmapVertex> vertices(m_mesh->vertex_count());
+        std::vector<LightmapVertex> vertices;
+		std::vector<uint32_t> indices;
 
-		for (int i = 0; i < atlas->meshes[0].vertexCount; i++)
-		{
-			vertices[i].position = vertex_ptr[i].position;
-			vertices[i].uv = vertex_ptr[i].tex_coord;
-            vertices[i].normal = vertex_ptr[i].normal;
-            vertices[i].tangent = vertex_ptr[i].tangent;
-            vertices[i].bitangent = vertex_ptr[i].bitangent;
-		}
+		for (int i = 0; i < mesh->sub_mesh_count(); i++)
+            m_unwrapped_mesh.submeshes.push_back(mesh->sub_meshes()[i]);
 
-		for (int i = 0; i < atlas->meshes[0].vertexCount; i++)
-		{
-            int idx                 = atlas->meshes[0].vertexArray[i].xref;
-            vertices[idx].lightmap_uv = glm::vec2(atlas->meshes[0].vertexArray[i].uv[0] / atlas->width, atlas->meshes[0].vertexArray[i].uv[1] / atlas->height);
-		}
+		uint32_t index_count = 0;
+		uint32_t vertex_count = 0;
 
-		// Create vertex buffer.
-        m_uv_unwrapped_vbo = std::make_unique<dw::VertexBuffer>(GL_STATIC_DRAW, sizeof(LightmapVertex) * vertices.size(), vertices.data());
+        for (int mesh_idx = 0; mesh_idx < atlas->meshCount; mesh_idx++)
+        {
+            dw::SubMesh& sub = m_unwrapped_mesh.submeshes[mesh_idx];
 
-       // Create index buffer.
-        m_uv_unwrapped_ibo = std::make_unique<dw::IndexBuffer>(GL_STATIC_DRAW, sizeof(uint32_t) * m_mesh->index_count(), m_mesh->indices());
+			sub.base_index = index_count;
+            sub.base_vertex = vertex_count;
 
-       // Declare vertex attributes.
-       dw::VertexAttrib attribs[] = { { 3, GL_FLOAT, false, 0 },
-                                    { 2, GL_FLOAT, false, offsetof(LightmapVertex, uv) },
-                                    { 2, GL_FLOAT, false, offsetof(LightmapVertex, lightmap_uv) },
-                                    { 3, GL_FLOAT, false, offsetof(LightmapVertex, normal) },
-                                    { 3, GL_FLOAT, false, offsetof(LightmapVertex, tangent) },
-                                    { 3, GL_FLOAT, false, offsetof(LightmapVertex, bitangent) } };
+            for (int i = 0; i < atlas->meshes[mesh_idx].vertexCount; i++)
+            {
+                int idx = atlas->meshes[mesh_idx].vertexArray[i].xref;
 
-       // Create vertex array.
-       m_uv_unwrapped_vao = std::make_unique<dw::VertexArray>(m_uv_unwrapped_vbo.get(), m_uv_unwrapped_ibo.get(), sizeof(LightmapVertex), 6, attribs);
+				LightmapVertex v;
 
-		return true;
+                v.position  = vertex_ptr[idx].position;
+                v.uv        = vertex_ptr[idx].tex_coord;
+                v.normal    = vertex_ptr[idx].normal;
+                v.tangent   = vertex_ptr[idx].tangent;
+                v.bitangent = vertex_ptr[idx].bitangent;
+                v.lightmap_uv = glm::vec2(atlas->meshes[mesh_idx].vertexArray[i].uv[0] / (atlas->width - 1), atlas->meshes[mesh_idx].vertexArray[i].uv[1] / (atlas->height - 1));
+
+				vertices.push_back(v);
+            }
+
+			for (int i = 0; i < atlas->meshes[mesh_idx].indexCount; i++)
+				indices.push_back(atlas->meshes[mesh_idx].indexArray[i]);
+
+			index_count += atlas->meshes[mesh_idx].indexCount;
+            vertex_count += atlas->meshes[mesh_idx].vertexCount;
+        }
+
+        // Create vertex buffer.
+        m_unwrapped_mesh.vbo = std::make_unique<dw::VertexBuffer>(GL_STATIC_DRAW, sizeof(LightmapVertex) * vertices.size(), vertices.data());
+
+        // Create index buffer.
+        m_unwrapped_mesh.ibo = std::make_unique<dw::IndexBuffer>(GL_STATIC_DRAW, sizeof(uint32_t) * indices.size(), indices.data());
+
+        // Declare vertex attributes.
+        dw::VertexAttrib attribs[] = { { 3, GL_FLOAT, false, 0 },
+                                       { 2, GL_FLOAT, false, offsetof(LightmapVertex, uv) },
+                                       { 2, GL_FLOAT, false, offsetof(LightmapVertex, lightmap_uv) },
+                                       { 3, GL_FLOAT, false, offsetof(LightmapVertex, normal) },
+                                       { 3, GL_FLOAT, false, offsetof(LightmapVertex, tangent) },
+                                       { 3, GL_FLOAT, false, offsetof(LightmapVertex, bitangent) } };
+
+        // Create vertex array.
+        m_unwrapped_mesh.vao = std::make_unique<dw::VertexArray>(m_unwrapped_mesh.vbo.get(), m_unwrapped_mesh.ibo.get(), sizeof(LightmapVertex), 6, attribs);
+
+        return true;
     }
-
-	// -----------------------------------------------------------------------------------------------------------------------------------
-
-	bool lightmap_uv_unwrap()
-	{
-		std::vector<glm::vec2> uv(m_mesh->vertex_count());
-		std::vector<uint32_t>  indices(m_mesh->index_count());
-		
-		xatlas::Atlas* atlas = xatlas::Create();
-
-		xatlas::UvMeshDecl mesh_decl;
-		
-		mesh_decl.vertexCount  = m_mesh->vertex_count();
-		mesh_decl.vertexStride = sizeof(glm::vec2);
-		mesh_decl.indexCount   = m_mesh->index_count();
-		mesh_decl.indexFormat  = xatlas::IndexFormat::UInt32;
-		
-		int                   idx = 0;
-		dw::Vertex* vertex_ptr = m_mesh->vertices();
-		uint32_t*             index_ptr = m_mesh->indices();
-		
-		 for (int i = 0; i < m_mesh->vertex_count(); i++)
-		    uv[i] = vertex_ptr[i].tex_coord;
-		
-		for (int mesh_idx = 0; mesh_idx < m_mesh->sub_mesh_count(); mesh_idx++)
-		{
-		    dw::SubMesh& submesh = m_mesh->sub_meshes()[mesh_idx];
-		
-			for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
-			    indices[idx++] = submesh.base_vertex + index_ptr[j];
-		}
-		
-		mesh_decl.vertexUvData = uv.data();
-		mesh_decl.indexData = indices.data();
-
-		xatlas::AddMeshError::Enum error = xatlas::AddUvMesh(atlas, mesh_decl);
-
-		if (error != xatlas::AddMeshError::Success)
-		{
-            xatlas::Destroy(atlas);
-			DW_LOG_ERROR("Failed to add UV mesh to Lightmap Atlas");
-			return false;
-		}
-
-		xatlas::PackCharts(atlas);
-
-		return create_lightmap_uv_unwrapped_mesh(atlas);
-	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    bool initialize_embree()
+    bool lightmap_uv_unwrap(dw::Mesh* mesh)
+    {
+        std::vector<glm::vec3> uv(mesh->vertex_count());
+
+        xatlas::Atlas* atlas = xatlas::Create();
+
+        int         idx        = 0;
+        dw::Vertex* vertex_ptr = mesh->vertices();
+        uint32_t*   index_ptr  = mesh->indices();
+
+        for (int i = 0; i < mesh->vertex_count(); i++)
+            uv[i] = vertex_ptr[i].position;
+
+        for (int mesh_idx = 0; mesh_idx < mesh->sub_mesh_count(); mesh_idx++)
+        {
+            dw::SubMesh& submesh = mesh->sub_meshes()[mesh_idx];
+
+            xatlas::MeshDecl mesh_decl;
+
+            mesh_decl.vertexCount  = mesh->vertex_count();
+            mesh_decl.vertexPositionStride = sizeof(glm::vec3);
+            mesh_decl.vertexPositionData = &uv[0];
+            mesh_decl.indexCount   = submesh.index_count;
+            mesh_decl.indexData    = &mesh->indices()[submesh.base_index];
+            mesh_decl.indexOffset  = submesh.base_vertex;
+            mesh_decl.indexFormat  = xatlas::IndexFormat::UInt32;
+
+            xatlas::AddMeshError::Enum error = xatlas::AddMesh(atlas, mesh_decl);
+
+            if (error != xatlas::AddMeshError::Success)
+            {
+                xatlas::Destroy(atlas);
+                DW_LOG_ERROR("Failed to add UV mesh to Lightmap Atlas");
+                return false;
+            }
+        }
+
+		xatlas::ComputeCharts(atlas);
+		xatlas::ParameterizeCharts(atlas);
+
+		xatlas::PackOptions pack_options;
+
+		pack_options.resolution = LIGHTMAP_TEXTURE_SIZE;
+
+        xatlas::PackCharts(atlas, pack_options);
+
+        bool status = create_lightmap_uv_unwrapped_mesh(atlas, mesh);
+        xatlas::Destroy(atlas);
+
+        return status;
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    bool initialize_embree(dw::Mesh* mesh)
     {
         m_embree_device = rtcNewDevice(nullptr);
 
@@ -519,27 +553,27 @@ private:
 
         m_embree_triangle_mesh = rtcNewGeometry(m_embree_device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
-        std::vector<glm::vec3> vertices(m_mesh->vertex_count());
-        std::vector<uint32_t>  indices(m_mesh->index_count());
+        std::vector<glm::vec3> vertices(mesh->vertex_count());
+        std::vector<uint32_t>  indices(mesh->index_count());
         uint32_t               idx        = 0;
-        dw::Vertex*            vertex_ptr = m_mesh->vertices();
-        uint32_t*              index_ptr  = m_mesh->indices();
+        dw::Vertex*            vertex_ptr = mesh->vertices();
+        uint32_t*              index_ptr  = mesh->indices();
 
-        for (int i = 0; i < m_mesh->vertex_count(); i++)
+        for (int i = 0; i < mesh->vertex_count(); i++)
             vertices[i] = vertex_ptr[i].position;
 
-        for (int i = 0; i < m_mesh->sub_mesh_count(); i++)
+        for (int i = 0; i < mesh->sub_mesh_count(); i++)
         {
-            dw::SubMesh& submesh = m_mesh->sub_meshes()[i];
+            dw::SubMesh& submesh = mesh->sub_meshes()[i];
 
             for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
                 indices[idx++] = submesh.base_vertex + index_ptr[j];
         }
 
-        void* data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(glm::vec3), m_mesh->vertex_count());
+        void* data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(glm::vec3), mesh->vertex_count());
         memcpy(data, vertices.data(), vertices.size() * sizeof(glm::vec3));
 
-        data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, 3 * sizeof(uint32_t), m_mesh->index_count() / 3);
+        data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, 3 * sizeof(uint32_t), mesh->index_count() / 3);
         memcpy(data, indices.data(), indices.size() * sizeof(uint32_t));
 
         rtcCommitGeometry(m_embree_triangle_mesh);
@@ -562,18 +596,21 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void render_mesh(dw::Mesh* mesh, glm::mat4 model, std::unique_ptr<dw::Program>& program)
+    void render_mesh(LightmapMesh& mesh, glm::mat4 model, std::unique_ptr<dw::Program>& program)
     {
         program->set_uniform("u_Model", model);
 
         // Bind vertex array.
-        m_uv_unwrapped_vao->bind();
+        mesh.vao->bind();
 
-        dw::SubMesh* submeshes = mesh->sub_meshes();
-
-        for (uint32_t i = 0; i < mesh->sub_mesh_count(); i++)
+        for (uint32_t i = 0; i < mesh.submeshes.size(); i++)
         {
-            dw::SubMesh& submesh = submeshes[i];
+            dw::SubMesh& submesh = mesh.submeshes[i];
+
+			if (program->set_uniform("s_Lightmap", 0))
+                m_lightmap_pos_texture->bind(0);
+
+			program->set_uniform("i_FromLightmap", (int)m_mouse_look);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -616,14 +653,28 @@ private:
         m_global_ubo->bind_base(0);
 
         // Draw scene.
-        render_mesh(m_mesh, m_transform, program);
+        render_mesh(m_unwrapped_mesh, m_transform, program);
     }
 
 	// -----------------------------------------------------------------------------------------------------------------------------------
 
 	void visualize_lightmap()
 	{
-
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_BLEND);
+	
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, 512, 512);
+		
+		// Bind shader program.
+        m_visualize_lightmap_program->use();
+		
+		if (m_visualize_lightmap_program->set_uniform("s_Lightmap", 0))
+            m_lightmap_pos_texture->bind(0);
+		
+		// Render fullscreen triangle
+		glDrawArrays(GL_TRIANGLES, 0, 3);
 	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -701,17 +752,13 @@ private:
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
 
-	std::unique_ptr<dw::VertexBuffer> m_uv_unwrapped_vbo;
-    std::unique_ptr<dw::IndexBuffer> m_uv_unwrapped_ibo;
-	std::unique_ptr<dw::VertexArray>  m_uv_unwrapped_vao;
-
     // Camera.
+    LightmapMesh                m_unwrapped_mesh;
     std::unique_ptr<dw::Camera> m_main_camera;
 
     GlobalUniforms m_global_uniforms;
 
     // Scene
-    dw::Mesh* m_mesh;
     glm::mat4 m_transform;
 
     // Camera controls.
@@ -729,7 +776,8 @@ private:
     RTCGeometry         m_embree_triangle_mesh = nullptr;
     RTCIntersectContext m_embree_intersect_context;
 
-   
+   glm::vec3 m_hit_pos;
+    bool      is_hit                       = false;
     bool    m_enable_conservative_raster   = true;
 
     // Camera orientation.

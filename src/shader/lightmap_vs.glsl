@@ -17,26 +17,11 @@ out vec3 FS_IN_Position;
 out vec3 FS_IN_Normal;
 
 // ------------------------------------------------------------------
-// UNIFORMS ---------------------------------------------------------
-// ------------------------------------------------------------------
-
-layout(std140) uniform GlobalUniforms
-{
-    mat4 view_proj;
-    mat4 light_view_proj;
-    vec4 cam_pos;
-};
-
-uniform mat4 u_Model;
-
-// ------------------------------------------------------------------
 // MAIN -------------------------------------------------------------
 // ------------------------------------------------------------------
 
 void main()
 {
-    vec4 world_pos = u_Model * vec4(VS_IN_Position, 1.0);
-    
     FS_IN_Position = VS_IN_Position;
     FS_IN_Normal = VS_IN_Normal;
 

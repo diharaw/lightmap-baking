@@ -14,7 +14,7 @@ out vec3 FS_OUT_Color;
 // UNIFORMS  --------------------------------------------------------
 // ------------------------------------------------------------------
 
-uniform sampler2D s_Texture;
+uniform sampler2D s_Lightmap;
 
 // ------------------------------------------------------------------
 // MAIN  ------------------------------------------------------------
@@ -22,7 +22,7 @@ uniform sampler2D s_Texture;
 
 void main(void)
 {
-    FS_OUT_Color = texture(s_Texture, FS_IN_TexCoord).rgb;
+    FS_OUT_Color = texture(s_Lightmap, FS_IN_TexCoord).rgb;
 }
 
 // ------------------------------------------------------------------

@@ -13,6 +13,7 @@ layout(location = 5) in vec3 VS_IN_Bitangent;
 // OUTPUT VARIABLES -------------------------------------------------
 // ------------------------------------------------------------------
 
+out vec3 FS_IN_ObjPos;
 out vec3 FS_IN_WorldPos;
 out vec3 FS_IN_Normal;
 out vec2 FS_IN_UV;
@@ -38,6 +39,7 @@ uniform mat4 u_Model;
 void main()
 {
     vec4 world_pos = u_Model * vec4(VS_IN_Position, 1.0f);
+    FS_IN_ObjPos = VS_IN_Position.xyz;
     FS_IN_WorldPos = world_pos.xyz;
     FS_IN_Normal   = normalize(normalize(mat3(u_Model) * VS_IN_Normal));
     FS_IN_UV = VS_IN_UV;
