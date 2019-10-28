@@ -18,9 +18,10 @@
 #include <xatlas.h>
 
 #define CAMERA_FAR_PLANE 1000.0f
-#define LIGHTMAP_TEXTURE_SIZE 4096
+#define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
-#define LIGHTMAP_SPP 1
+#define LIGHTMAP_SPP 10
+#define LIGHTMAP_BOUNCES 4
 
 struct GlobalUniforms
 {
@@ -44,7 +45,7 @@ struct LightmapVertex
 
 struct LightmapMesh
 {
-    std::vector<dw::SubMesh> submeshes;
+    std::vector<dw::SubMesh>          submeshes;
     std::unique_ptr<dw::VertexBuffer> vbo;
     std::unique_ptr<dw::IndexBuffer>  ibo;
     std::unique_ptr<dw::VertexArray>  vao;
@@ -73,8 +74,8 @@ protected:
         // Create camera.
         create_camera();
 
-		initialize_lightmap();
-		bake_lightmap();
+        initialize_lightmap();
+        bake_lightmap();
 
         m_transform = glm::mat4(1.0f);
 
@@ -93,10 +94,10 @@ protected:
         render_lit_scene();
         visualize_lightmap();
 
-		if (is_hit)
+        if (is_hit)
             m_debug_draw.sphere(2.0f, m_hit_pos, glm::vec3(1.0f, 0.0f, 0.0f));
 
-		m_debug_draw.render(nullptr, m_width, m_height, m_global_uniforms.view_proj);
+        m_debug_draw.render(nullptr, m_width, m_height, m_global_uniforms.view_proj);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -193,7 +194,7 @@ protected:
 
             if (rayhit.ray.tfar != INFINITY)
             {
-                is_hit = true;
+                is_hit    = true;
                 m_hit_pos = m_main_camera->m_position + ray_dir * rayhit.ray.tfar;
             }
             else
@@ -283,16 +284,16 @@ private:
                 glDisable(GL_INTEL_conservative_rasterization);
         }
 
-		glFinish();
+        glFinish();
 
-		m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+        m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
         m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
 
-		GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
+        GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_pos_texture->target(), m_lightmap_pos_texture->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_pos_texture->target(), 0, m_lightmap_pos_texture->format(), m_lightmap_pos_texture->type(), m_ray_positions.data()));
 
-		GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture->target(), m_lightmap_normal_texture->id()));
+        GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture->target(), m_lightmap_normal_texture->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_normal_texture->target(), 0, m_lightmap_normal_texture->format(), m_lightmap_normal_texture->type(), m_ray_directions.data()));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture->target(), 0));
     }
@@ -310,12 +311,12 @@ private:
     {
         {
             // Create general shaders
-            m_lightmap_fs      = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/lightmap_fs.glsl"));
-            m_mesh_vs          = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
-            m_mesh_fs          = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
-            m_triangle_vs      = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
-            m_lightmap_vs      = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
-            m_visualize_lightmap_fs      = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
+            m_lightmap_fs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/lightmap_fs.glsl"));
+            m_mesh_vs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
+            m_mesh_fs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
+            m_triangle_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
+            m_lightmap_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
+            m_visualize_lightmap_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -326,7 +327,7 @@ private:
 
                 // Create general shader program
                 dw::Shader* shaders[] = { m_lightmap_vs.get(), m_lightmap_fs.get() };
-                m_lightmap_program       = std::make_unique<dw::Program>(2, shaders);
+                m_lightmap_program    = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_lightmap_program)
                 {
@@ -337,7 +338,7 @@ private:
                 m_lightmap_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
-			{
+            {
                 if (!m_triangle_vs || !m_visualize_lightmap_fs)
                 {
                     DW_LOG_FATAL("Failed to create Shaders");
@@ -345,8 +346,8 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[] = { m_triangle_vs.get(), m_visualize_lightmap_fs.get() };
-                m_visualize_lightmap_program    = std::make_unique<dw::Program>(2, shaders);
+                dw::Shader* shaders[]        = { m_triangle_vs.get(), m_visualize_lightmap_fs.get() };
+                m_visualize_lightmap_program = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_visualize_lightmap_program)
                 {
@@ -365,8 +366,8 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[]  = { m_mesh_vs.get(), m_mesh_fs.get() };
-                m_mesh_program = std::make_unique<dw::Program>(2, shaders);
+                dw::Shader* shaders[] = { m_mesh_vs.get(), m_mesh_fs.get() };
+                m_mesh_program        = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_mesh_program)
                 {
@@ -385,8 +386,8 @@ private:
 
     void create_framebuffers()
     {
-        m_lightmap_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
-        m_lightmap_pos_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
+        m_lightmap_texture        = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
+        m_lightmap_pos_texture    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
         m_lightmap_normal_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
 
         //m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -395,7 +396,7 @@ private:
 
         m_lightmap_fbo = std::make_unique<dw::Framebuffer>();
 
-		dw::Texture* textures[] = { m_lightmap_pos_texture.get(), m_lightmap_normal_texture.get() };
+        dw::Texture* textures[] = { m_lightmap_pos_texture.get(), m_lightmap_normal_texture.get() };
 
         m_lightmap_fbo->attach_multiple_render_targets(2, textures);
     }
@@ -422,59 +423,59 @@ private:
             return false;
         }
 
-		if (!lightmap_uv_unwrap(mesh))
+        if (!lightmap_uv_unwrap(mesh))
             return false;
 
         if (!initialize_embree(mesh))
             return false;
 
-		dw::Mesh::unload(mesh);
+        dw::Mesh::unload(mesh);
 
         return true;
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	bool create_lightmap_uv_unwrapped_mesh(xatlas::Atlas* atlas, dw::Mesh* mesh)
+    bool create_lightmap_uv_unwrapped_mesh(xatlas::Atlas* atlas, dw::Mesh* mesh)
     {
         dw::Vertex* vertex_ptr = mesh->vertices();
 
         std::vector<LightmapVertex> vertices;
-		std::vector<uint32_t> indices;
+        std::vector<uint32_t>       indices;
 
-		for (int i = 0; i < mesh->sub_mesh_count(); i++)
+        for (int i = 0; i < mesh->sub_mesh_count(); i++)
             m_unwrapped_mesh.submeshes.push_back(mesh->sub_meshes()[i]);
 
-		uint32_t index_count = 0;
-		uint32_t vertex_count = 0;
+        uint32_t index_count  = 0;
+        uint32_t vertex_count = 0;
 
         for (int mesh_idx = 0; mesh_idx < atlas->meshCount; mesh_idx++)
         {
             dw::SubMesh& sub = m_unwrapped_mesh.submeshes[mesh_idx];
 
-			sub.base_index = index_count;
+            sub.base_index  = index_count;
             sub.base_vertex = vertex_count;
 
             for (int i = 0; i < atlas->meshes[mesh_idx].vertexCount; i++)
             {
                 int idx = atlas->meshes[mesh_idx].vertexArray[i].xref;
 
-				LightmapVertex v;
+                LightmapVertex v;
 
-                v.position  = vertex_ptr[idx].position;
-                v.uv        = vertex_ptr[idx].tex_coord;
-                v.normal    = vertex_ptr[idx].normal;
-                v.tangent   = vertex_ptr[idx].tangent;
-                v.bitangent = vertex_ptr[idx].bitangent;
+                v.position    = vertex_ptr[idx].position;
+                v.uv          = vertex_ptr[idx].tex_coord;
+                v.normal      = vertex_ptr[idx].normal;
+                v.tangent     = vertex_ptr[idx].tangent;
+                v.bitangent   = vertex_ptr[idx].bitangent;
                 v.lightmap_uv = glm::vec2(atlas->meshes[mesh_idx].vertexArray[i].uv[0] / (atlas->width - 1), atlas->meshes[mesh_idx].vertexArray[i].uv[1] / (atlas->height - 1));
 
-				vertices.push_back(v);
+                vertices.push_back(v);
             }
 
-			for (int i = 0; i < atlas->meshes[mesh_idx].indexCount; i++)
-				indices.push_back(atlas->meshes[mesh_idx].indexArray[i]);
+            for (int i = 0; i < atlas->meshes[mesh_idx].indexCount; i++)
+                indices.push_back(atlas->meshes[mesh_idx].indexArray[i]);
 
-			index_count += atlas->meshes[mesh_idx].indexCount;
+            index_count += atlas->meshes[mesh_idx].indexCount;
             vertex_count += atlas->meshes[mesh_idx].vertexCount;
         }
 
@@ -519,13 +520,13 @@ private:
 
             xatlas::MeshDecl mesh_decl;
 
-            mesh_decl.vertexCount  = mesh->vertex_count();
+            mesh_decl.vertexCount          = mesh->vertex_count();
             mesh_decl.vertexPositionStride = sizeof(glm::vec3);
-            mesh_decl.vertexPositionData = &uv[0];
-            mesh_decl.indexCount   = submesh.index_count;
-            mesh_decl.indexData    = &mesh->indices()[submesh.base_index];
-            mesh_decl.indexOffset  = submesh.base_vertex;
-            mesh_decl.indexFormat  = xatlas::IndexFormat::UInt32;
+            mesh_decl.vertexPositionData   = &uv[0];
+            mesh_decl.indexCount           = submesh.index_count;
+            mesh_decl.indexData            = &mesh->indices()[submesh.base_index];
+            mesh_decl.indexOffset          = submesh.base_vertex;
+            mesh_decl.indexFormat          = xatlas::IndexFormat::UInt32;
 
             xatlas::AddMeshError::Enum error = xatlas::AddMesh(atlas, mesh_decl);
 
@@ -537,13 +538,13 @@ private:
             }
         }
 
-		xatlas::ComputeCharts(atlas);
-		xatlas::ParameterizeCharts(atlas);
+        xatlas::ComputeCharts(atlas);
+        xatlas::ParameterizeCharts(atlas);
 
-		xatlas::PackOptions pack_options;
+        xatlas::PackOptions pack_options;
 
-		pack_options.padding    = LIGHTMAP_CHART_PADDING;
-		pack_options.resolution = LIGHTMAP_TEXTURE_SIZE;
+        pack_options.padding    = LIGHTMAP_CHART_PADDING;
+        pack_options.resolution = LIGHTMAP_TEXTURE_SIZE;
 
         xatlas::PackCharts(atlas, pack_options);
 
@@ -624,10 +625,10 @@ private:
         {
             dw::SubMesh& submesh = mesh.submeshes[i];
 
-			if (program->set_uniform("s_Lightmap", 0))
+            if (program->set_uniform("s_Lightmap", 0))
                 m_lightmap_texture->bind(0);
 
-			program->set_uniform("i_FromLightmap", 1);
+            program->set_uniform("i_FromLightmap", 1);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -673,116 +674,237 @@ private:
         render_mesh(m_unwrapped_mesh, m_transform, program);
     }
 
-	// -----------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void visualize_lightmap()
-	{
-		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_CULL_FACE);
-		glDisable(GL_BLEND);
-	
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, 512, 512);
-		
-		// Bind shader program.
+    void visualize_lightmap()
+    {
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, 512, 512);
+
+        // Bind shader program.
         m_visualize_lightmap_program->use();
-		
-		if (m_visualize_lightmap_program->set_uniform("s_Lightmap", 0))
+
+        if (m_visualize_lightmap_program->set_uniform("s_Lightmap", 0))
             m_lightmap_texture->bind(0);
-		
-		// Render fullscreen triangle
-		glDrawArrays(GL_TRIANGLES, 0, 3);
-	}
 
-	// -----------------------------------------------------------------------------------------------------------------------------------
+        // Render fullscreen triangle
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
 
-	float drand48()
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    float drand48()
     {
         return distribution(generator);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void bake_lightmap()
+    glm::vec3 diffuse_lambert(glm::vec3 albedo)
+    {
+        return albedo;
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    bool valid_texel(glm::vec3 t)
+    {
+        return !(t.x == 0.0f && t.y == 0.0f && t.z == 0.0f);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    glm::vec3 sample_direction(int x, int y)
+    {
+        return m_ray_directions[LIGHTMAP_TEXTURE_SIZE * y + x];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    glm::vec3 sample_position(int x, int y)
+    {
+        return m_ray_positions[LIGHTMAP_TEXTURE_SIZE * y + x];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	bool valid_position(int x, int y)
+    {
+        glm::vec3 p = sample_position(x, y);
+        return !(p.x == 0.0f && p.y == 0.0f && p.z == 0.0f);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	bool is_nan(glm::vec3 v)
 	{
+		glm::bvec3 b = glm::isnan(v);		
+		return b.x || b.y || b.z;
+	}
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	glm::mat3 make_rotation_matrix(glm::vec3 z)
+    {
+        const glm::vec3 ref = glm::abs(glm::dot(z, glm::vec3(0, 1, 0))) > 0.99f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+
+        const glm::vec3 x = glm::normalize(glm::cross(ref, z));
+        const glm::vec3 y = glm::cross(z, x);
+
+		assert(!is_nan(x));
+        assert(!is_nan(y));
+		assert(!is_nan(z));
+
+        return { x, y, z };
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	#undef max
+
+	glm::vec3 sample_cosine_lobe_direction(glm::vec3 n)
+	{
+		glm::vec2 sample = glm::max(glm::vec2(0.00001f), glm::vec2(drand48(), drand48()));
+
+		const float phi = 2.0f * M_PI * sample.y;
+
+		const float cos_theta = sqrt(sample.x);
+		const float sin_theta = sqrt(1 - sample.x);
+
+		glm::vec3 t = glm::vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+                
+		assert(!is_nan(t));
+
+		return make_rotation_matrix(n) * t;
+	}
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+	void create_ray(glm::vec3 direction, glm::vec3 position, RTCRayHit& rayhit)
+	{
+		rayhit.ray.dir_x = direction.x;
+		rayhit.ray.dir_y = direction.y;
+		rayhit.ray.dir_z = direction.z;
+
+		rayhit.ray.org_x = position.x;
+		rayhit.ray.org_y = position.y;
+		rayhit.ray.org_z = position.z;
+
+		rayhit.ray.tnear     = 0;
+		rayhit.ray.tfar      = INFINITY;
+		rayhit.ray.mask      = 0;
+		rayhit.ray.flags     = 0;
+		rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
+		rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
+	}
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+	glm::vec3 evaluate_direct_lighting(glm::vec3 p, glm::vec3 n)
+	{
+		const glm::vec3 l      = -glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+		const glm::vec3 albedo = glm::vec3(0.7f);
+		const glm::vec3 li  = glm::vec3(1.0f);
+
+		RTCRay rayhit;
+                
+        rayhit.dir_x = l.x;
+        rayhit.dir_y = l.y;
+        rayhit.dir_z = l.z;
+
+        rayhit.org_x = p.x;
+        rayhit.org_y = p.y;
+        rayhit.org_z = p.z;
+
+        rayhit.tnear = 0;
+        rayhit.tfar  = INFINITY;
+        rayhit.mask  = 0;
+        rayhit.flags = 0;
+
+        rtcOccluded1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+
+        // Is it visible?
+        if (rayhit.tfar != INFINITY)
+            return li * diffuse_lambert(albedo) * glm::dot(n, l);
+
+		return glm::vec3(0.0f);
+	}
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position)
+    {
+        glm::vec3 color = glm::vec3(0.0f);
+        glm::vec3 attenuation = glm::vec3(1.0f);
+
+		RTCRayHit rayhit;
+
+		glm::vec3 p = position;
+		glm::vec3 n = direction;
+		glm::vec3 d = direction;
+
+		const glm::vec3 albedo = glm::vec3(0.7f);
+
+		for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
+		{
+            d = sample_cosine_lobe_direction(n);
+
+			create_ray(d, p, rayhit);
+
+			rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+
+			// Does intersect scene
+			if (rayhit.ray.tfar == INFINITY)
+				return color;
+
+			p = p + d * rayhit.ray.tfar;
+			n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+
+			color += evaluate_direct_lighting(p, n) * attenuation;
+
+			attenuation *= albedo;
+		}
+
+        return color;
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    void bake_lightmap()
+    {
         std::vector<glm::vec3> framebuffer;
         framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
 
-		distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
+        distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
 
-		glm::vec3 light_dir = -glm::normalize(glm::vec3(0.0f, -1.0f, 0.2f));
         float w = 1.0f / float(LIGHTMAP_SPP);
 
 		#pragma omp parallel for
-		for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
-		{
-			for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
-			{
-				glm::vec3 color = glm::vec3(0.0f);
+        for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
+        {
+            for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
+            {
+                glm::vec3 color     = glm::vec3(0.0f);
+                glm::vec3 normal = sample_direction(x, y);
+                glm::vec3 position  = sample_position(x, y);
 
-				glm::vec3 direction = m_ray_directions[LIGHTMAP_TEXTURE_SIZE * y + x];
-                glm::vec3 position  = m_ray_positions[LIGHTMAP_TEXTURE_SIZE * y + x] + direction * 0.1f;
+                // Check if this is a valid lightmap texel
+                if (valid_texel(normal))
+                {
+                    for (int sample = 0; sample < LIGHTMAP_SPP; sample++)
+                        color += path_trace(normal, position) * w;
+                }
 
-				// Check if this is a valid lightmap texel
-                if (direction.x == 0.0f && direction.y == 0.0f && direction.z == 0.0f)
-                    continue;
+                framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
+            }
+        }
 
-				for (int sample = 0; sample < LIGHTMAP_SPP; sample++)
-				{
-				    float u = float(x + drand48()) / float(LIGHTMAP_TEXTURE_SIZE);
-				    float v = float(y + drand48()) / float(LIGHTMAP_TEXTURE_SIZE);
-
-				    /*RTCRayHit rayhit;
-
-				    rayhit.ray.dir_x = light_dir.x;
-				    rayhit.ray.dir_y = light_dir.y;
-				    rayhit.ray.dir_z = light_dir.z;
-
-				    rayhit.ray.org_x = position.x;
-				    rayhit.ray.org_y = position.y;
-				    rayhit.ray.org_z = position.z;
-
-				    rayhit.ray.tnear     = 0;
-				    rayhit.ray.tfar      = INFINITY;
-				    rayhit.ray.mask      = 0;
-				    rayhit.ray.flags     = 0;
-				    rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
-				    rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;*/
-
-					RTCRay rayhit;
-
-				    rayhit.dir_x = light_dir.x;
-				    rayhit.dir_y = light_dir.y;
-				    rayhit.dir_z = light_dir.z;
-
-				    rayhit.org_x = position.x;
-				    rayhit.org_y = position.y;
-				    rayhit.org_z = position.z;
-
-				    rayhit.tnear     = 0;
-				    rayhit.tfar      = INFINITY;
-				    rayhit.mask      = 0;
-				    rayhit.flags     = 0;
-         
-				    rtcOccluded1(m_embree_scene, &m_embree_intersect_context, &rayhit);
-
-					// Is in shadow?
-				    if (rayhit.tfar != INFINITY)
-				    {
-						color = glm::vec3(0.5f) * w;
-				    }
-					else
-					{
-						color = glm::vec3(1.0f) * w;
-					}
-				}
-
-				framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
-			}
-		}
-
-		m_lightmap_texture->set_data(0, 0, framebuffer.data());
-	}
+        m_lightmap_texture->set_data(0, 0, framebuffer.data());
+    }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -843,7 +965,7 @@ private:
     std::unique_ptr<dw::Shader> m_mesh_fs;
     std::unique_ptr<dw::Shader> m_visualize_lightmap_fs;
 
-	std::unique_ptr<dw::Shader> m_lightmap_vs;
+    std::unique_ptr<dw::Shader> m_lightmap_vs;
     std::unique_ptr<dw::Shader> m_triangle_vs;
     std::unique_ptr<dw::Shader> m_mesh_vs;
 
@@ -851,7 +973,7 @@ private:
     std::unique_ptr<dw::Program> m_visualize_lightmap_program;
     std::unique_ptr<dw::Program> m_mesh_program;
 
-	std::unique_ptr<dw::Texture2D> m_lightmap_texture;
+    std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_pos_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_normal_texture;
 
@@ -859,7 +981,7 @@ private:
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
 
-	std::vector<glm::vec3> m_ray_positions;
+    std::vector<glm::vec3> m_ray_positions;
     std::vector<glm::vec3> m_ray_directions;
 
     // Camera.
@@ -888,9 +1010,9 @@ private:
 
     glm::vec3 m_hit_pos;
     bool      is_hit                       = false;
-    bool    m_enable_conservative_raster   = true;
+    bool      m_enable_conservative_raster = true;
 
-	std::default_random_engine            generator;
+    std::default_random_engine            generator;
     std::uniform_real_distribution<float> distribution;
 
     // Camera orientation.
