@@ -20,8 +20,8 @@
 #define CAMERA_FAR_PLANE 1000.0f
 #define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
-#define LIGHTMAP_SPP 10
-#define LIGHTMAP_BOUNCES 4
+#define LIGHTMAP_SPP 1000
+#define LIGHTMAP_BOUNCES 15
 
 struct GlobalUniforms
 {
@@ -829,45 +829,95 @@ private:
 
         // Is it visible?
         if (rayhit.tfar != INFINITY)
-            return li * diffuse_lambert(albedo) * glm::dot(n, l);
+            return li * diffuse_lambert(albedo) * glm::max(glm::dot(n, l), 0.0f);
 
 		return glm::vec3(0.0f);
 	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
+	glm::vec3 random_in_unit_sphere()
+    {
+        float     z   = distribution(generator) * 2.0f - 1.0f;
+        float     t   = distribution(generator) * 2.0f * 3.1415926f;
+        float     r   = sqrt(std::max(0.0f, 1.0f - z * z));
+        float     x   = r * cos(t);
+        float     y   = r * sin(t);
+        glm::vec3 res = glm::vec3(x, y, z);
+        res *= pow(distribution(generator), 1.0f / 3.0f);
+        return res;
+    }
+
     glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position)
     {
-        glm::vec3 color = glm::vec3(0.0f);
-        glm::vec3 attenuation = glm::vec3(1.0f);
+  //      glm::vec3 color = glm::vec3(0.0f);
+  //      glm::vec3 attenuation = glm::vec3(1.0f);
+
+		//RTCRayHit rayhit;
+
+		//glm::vec3 p = position;
+		//glm::vec3 n = direction;
+		//glm::vec3 d = direction;
+
+		//const glm::vec3 albedo = glm::vec3(0.7f);
+
+		//for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
+		//{
+  //          d = sample_cosine_lobe_direction(n);
+
+		//	create_ray(d, p, rayhit);
+
+		//	rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+
+		//	// Does intersect scene
+		//	if (rayhit.ray.tfar == INFINITY)
+		//		return color;
+
+		//	p = p + d * rayhit.ray.tfar;
+		//	n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+
+		//	color += evaluate_direct_lighting(p, n) * attenuation;
+
+		//	attenuation *= albedo;
+		//}
+
+		glm::vec3 color = glm::vec3(1.0f);
 
 		RTCRayHit rayhit;
 
-		glm::vec3 p = position;
-		glm::vec3 n = direction;
-		glm::vec3 d = direction;
+        glm::vec3 p = position;
+        glm::vec3 n = direction;
+        glm::vec3 d = direction;
+
+		p += glm::sign(n) * abs(p * 0.0000002f);
 
 		const glm::vec3 albedo = glm::vec3(0.7f);
+        const glm::vec3 sky_color = glm::vec3(1.0f);
 
 		for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
-		{
+        {
+			// Get a random direction
             d = sample_cosine_lobe_direction(n);
+            //d = random_in_unit_sphere();
 
-			create_ray(d, p, rayhit);
+			// Create a ray in the selected random direction
+            create_ray(d, p, rayhit);
 
-			rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+			// Interesect ray with the scene
+            rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
 
-			// Does intersect scene
-			if (rayhit.ray.tfar == INFINITY)
-				return color;
+            // Check if the ray intersects the scene
+            if (rayhit.ray.tfar == INFINITY)
+                return color * sky_color; 
+
+            color *= albedo;
 
 			p = p + d * rayhit.ray.tfar;
-			n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+            n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
 
-			color += evaluate_direct_lighting(p, n) * attenuation;
-
-			attenuation *= albedo;
-		}
+			// Add bias to position
+			p += glm::sign(n) * abs(p * 0.0000002f);
+        }
 
         return color;
     }
@@ -897,9 +947,11 @@ private:
                 {
                     for (int sample = 0; sample < LIGHTMAP_SPP; sample++)
                         color += path_trace(normal, position) * w;
-                }
 
-                framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
+					framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
+                }
+                else
+                    framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec3(0.0f, 0.0f, 0.0f);
             }
         }
 

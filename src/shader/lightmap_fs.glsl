@@ -19,7 +19,7 @@ layout(location = 1) out vec3 FS_OUT_Normal;
 void main(void)
 {
     FS_OUT_Position = FS_IN_Position;
-    FS_OUT_Normal = FS_IN_Normal;
+    FS_OUT_Normal = normalize(FS_IN_Normal);
 }
 
 // ------------------------------------------------------------------
