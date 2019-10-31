@@ -9,8 +9,8 @@ in vec3 FS_IN_Normal;
 // OUTPUT VARIABLES  ------------------------------------------------
 // ------------------------------------------------------------------
 
-layout(location = 0) out vec3 FS_OUT_Position;
-layout(location = 1) out vec3 FS_OUT_Normal;
+layout(location = 0) out vec4 FS_OUT_Position;
+layout(location = 1) out vec4 FS_OUT_Normal;
 
 // ------------------------------------------------------------------
 // MAIN  ------------------------------------------------------------
@@ -18,8 +18,8 @@ layout(location = 1) out vec3 FS_OUT_Normal;
 
 void main(void)
 {
-    FS_OUT_Position = FS_IN_Position;
-    FS_OUT_Normal = normalize(FS_IN_Normal);
+    FS_OUT_Position = vec4(FS_IN_Position, 1.0);
+    FS_OUT_Normal = vec4(normalize(FS_IN_Normal), 1.0);
 }
 
 // ------------------------------------------------------------------
