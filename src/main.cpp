@@ -284,9 +284,9 @@ private:
                 glDisable(GL_INTEL_conservative_rasterization);
         }
 
-		// Dialate
+        // Dialate
 
-		m_lightmap_fbo[1]->bind();
+        m_lightmap_fbo[1]->bind();
 
         glViewport(0, 0, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE);
 
@@ -296,18 +296,18 @@ private:
         // Bind shader program.
         m_dialate_program->use();
 
-		if (m_dialate_program->set_uniform("s_Position", 0))
+        if (m_dialate_program->set_uniform("s_Position", 0))
             m_lightmap_pos_texture[0]->bind(0);
 
-		if (m_dialate_program->set_uniform("s_Normal", 1))
-			m_lightmap_normal_texture[0]->bind(1);
+        if (m_dialate_program->set_uniform("s_Normal", 1))
+            m_lightmap_normal_texture[0]->bind(1);
 
         // Render fullscreen triangle
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         glFinish();
 
-		// Copy bake sample points
+        // Copy bake sample points
 
         m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
         m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
@@ -439,13 +439,13 @@ private:
             dw::Texture* textures[] = { m_lightmap_pos_texture[0].get(), m_lightmap_normal_texture[0].get() };
 
             m_lightmap_fbo[0]->attach_multiple_render_targets(2, textures);
-		}
+        }
 
-		{
-			dw::Texture* textures[] = { m_lightmap_pos_texture[1].get(), m_lightmap_normal_texture[1].get() };
+        {
+            dw::Texture* textures[] = { m_lightmap_pos_texture[1].get(), m_lightmap_normal_texture[1].get() };
 
-			m_lightmap_fbo[1]->attach_multiple_render_targets(2, textures);
-		}
+            m_lightmap_fbo[1]->attach_multiple_render_targets(2, textures);
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -675,7 +675,7 @@ private:
             if (program->set_uniform("s_Lightmap", 0))
                 m_lightmap_texture->bind(0);
 
-                //m_lightmap_pos_texture[(int)m_mouse_look]->bind(0);
+            //m_lightmap_pos_texture[(int)m_mouse_look]->bind(0);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
