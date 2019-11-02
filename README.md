@@ -5,11 +5,11 @@ An OpenGL sample for generating path traced lightmaps for real-time rendering ap
 
 ## Screenshots
 
-![Lightmaps](data/screenshot_1.jpg)
+![Lightmaps](data/screenshot_1.JPG)
 
-![Lightmaps](data/screenshot_2.jpg)
+![Lightmaps](data/screenshot_2.JPG)
 
-![Lightmaps](data/screenshot_2.jpg)
+![Lightmaps](data/screenshot_3.JPG)
 
 ## Dependencies
 * [dwSampleFramework](https://github.com/diharaw/dwSampleFramework) 
