@@ -7,3 +7,6 @@
 [submodule "external/dwSampleFramework"]
 	path = external/dwSampleFramework
 	url = https://github.com/diharaw/dwSampleFramework.git
+[submodule "external/oidn"]
+	path = external/oidn
+	url = https://github.com/OpenImageDenoise/oidn.git

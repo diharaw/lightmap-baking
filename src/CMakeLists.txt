@@ -23,6 +23,7 @@ endif()
 
 target_link_libraries(Lightmaps dwSampleFramework)
 target_link_libraries(Lightmaps embree)
+target_link_libraries(Lightmaps OpenImageDenoise)
 
 if (NOT APPLE)
     add_custom_command(TARGET Lightmaps POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/shader $<TARGET_FILE_DIR:Lightmaps>/shader)
