@@ -16,6 +16,7 @@
 #include <rtcore_device.h>
 #include <rtcore_scene.h>
 #include <xatlas.h>
+#include <oidn.h>
 
 #define CAMERA_FAR_PLANE 1000.0f
 #define LIGHTMAP_TEXTURE_SIZE 1024
@@ -59,6 +60,11 @@ protected:
 
     bool init(int argc, const char* argv[]) override
     {
+        m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
+
+		create_denoiser();
+        create_lightmap_buffers();
+
         // Load scene.
         if (!load_scene())
             return false;
@@ -98,13 +104,18 @@ protected:
         update_global_uniforms(m_global_uniforms);
 
         render_lit_scene();
-        visualize_lightmap();
+
+		if (m_debug_gui)
+			visualize_lightmap();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     void shutdown() override
     {
+        oidnReleaseFilter(m_oidn_filter);
+        oidnReleaseDevice(m_oidn_device);
+
         rtcReleaseGeometry(m_embree_triangle_mesh);
         rtcReleaseScene(m_embree_scene);
         rtcReleaseDevice(m_embree_device);
@@ -206,6 +217,11 @@ private:
 
     void gui()
     {
+        if (ImGui::Checkbox("Conservative Rasterization", &m_enable_conservative_raster))
+            initialize_lightmap();
+
+        ImGui::Checkbox("Denoise Lightmap", &m_denoise);
+
         ImGui::InputInt("SPP", &m_num_samples);
 
         if (ImGui::Button("Bake"))
@@ -285,10 +301,6 @@ private:
         glFinish();
 
         // Copy bake sample points
-
-        m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-        m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-
         GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_pos_texture[1]->target(), m_lightmap_pos_texture[1]->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_pos_texture[1]->target(), 0, m_lightmap_pos_texture[1]->format(), m_lightmap_pos_texture[1]->type(), m_ray_positions.data()));
@@ -296,10 +308,29 @@ private:
         GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture[1]->target(), m_lightmap_normal_texture[1]->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_normal_texture[1]->target(), 0, m_lightmap_normal_texture[1]->format(), m_lightmap_normal_texture[1]->type(), m_ray_directions.data()));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture[1]->target(), 0));
-
-		m_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-        m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
     }
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+	void create_denoiser()
+	{
+		m_oidn_device = oidnNewDevice(OIDN_DEVICE_TYPE_DEFAULT);
+		oidnCommitDevice(m_oidn_device);
+
+		// Create a denoising filter
+		m_oidn_filter = oidnNewFilter(m_oidn_device, "RTLightmap");
+	}
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void create_lightmap_buffers()
+	{
+		m_temp_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+		m_denoised_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+
+        m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+        m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -945,9 +976,9 @@ private:
         {
             size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 3;
 
-            fread(m_framebuffer.data(), n, 1, lm);
+            fread(m_denoised_framebuffer.data(), n, 1, lm);
 
-            m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
+            m_lightmap_texture->set_data(0, 0, m_denoised_framebuffer.data());
 
             fclose(lm);
 
@@ -965,10 +996,33 @@ private:
 		
 		size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 3;
 
-		fwrite(m_framebuffer.data(), n, 1, lm);
+		if (m_denoise)
+			fwrite(m_denoised_framebuffer.data(), n, 1, lm);
+        else
+            fwrite(m_temp_framebuffer.data(), n, 1, lm);
 		
 		fclose(lm);
     }
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+	void denoise()
+	{
+		oidnSetSharedFilterImage(m_oidn_filter, "color", m_temp_framebuffer.data(), OIDN_FORMAT_FLOAT3, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 0, 0, 0);
+        oidnSetSharedFilterImage(m_oidn_filter, "output", m_denoised_framebuffer.data(), OIDN_FORMAT_FLOAT3, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 0, 0, 0);
+
+		oidnSetFilter1b(m_oidn_filter, "hdr", true);
+        oidnCommitFilter(m_oidn_filter);
+
+        // Filter the image
+        oidnExecuteFilter(m_oidn_filter);
+
+        // Check for errors
+        const char* error_message;
+
+        if (oidnGetDeviceError(m_oidn_device, &error_message) != OIDN_ERROR_NONE)
+            DW_LOG_ERROR("Failed to denoise image: " + std::string(error_message));
+	}
 
 	// -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -992,11 +1046,17 @@ private:
                         color += path_trace(normal, position) * w;
                 }
 
-				m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
+				m_temp_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = color;
             }
         }
 
-        m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
+		if (m_denoise)
+		{
+			denoise();
+			m_lightmap_texture->set_data(0, 0, m_denoised_framebuffer.data());
+		}
+		else
+			m_lightmap_texture->set_data(0, 0, m_temp_framebuffer.data());
 
 		write_lightmap();
     }
@@ -1080,7 +1140,8 @@ private:
 
     std::vector<glm::vec4> m_ray_positions;
     std::vector<glm::vec4> m_ray_directions;
-    std::vector<glm::vec3> m_framebuffer;
+    std::vector<glm::vec3> m_temp_framebuffer;
+    std::vector<glm::vec3> m_denoised_framebuffer;
 
     // Camera.
     LightmapMesh                m_unwrapped_mesh;
@@ -1107,9 +1168,14 @@ private:
     RTCGeometry         m_embree_triangle_mesh = nullptr;
     RTCIntersectContext m_embree_intersect_context;
 
+	// Open Image Denoise
+    OIDNDevice m_oidn_device;
+    OIDNFilter m_oidn_filter;
+
     glm::vec3 m_hit_pos;
     bool      is_hit                       = false;
     bool      m_enable_conservative_raster = true;
+	bool m_denoise = true;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
