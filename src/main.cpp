@@ -19,7 +19,7 @@
 #include <oidn.h>
 
 #define CAMERA_FAR_PLANE 1000.0f
-#define LIGHTMAP_TEXTURE_SIZE 1024
+#define LIGHTMAP_TEXTURE_SIZE 4096
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 100
 #define LIGHTMAP_BOUNCES 15
@@ -442,6 +442,12 @@ private:
         m_lightmap_pos_texture[1]    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[0] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[1] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+
+		m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        m_lightmap_pos_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        m_lightmap_pos_texture[1]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        m_lightmap_normal_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        m_lightmap_normal_texture[1]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
         m_lightmap_fbo[0] = std::make_unique<dw::Framebuffer>();
         m_lightmap_fbo[1] = std::make_unique<dw::Framebuffer>();
