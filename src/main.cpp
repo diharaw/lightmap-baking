@@ -19,9 +19,9 @@
 #include <oidn.h>
 
 #define CAMERA_FAR_PLANE 1000.0f
-#define LIGHTMAP_TEXTURE_SIZE 4096
+#define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
-#define LIGHTMAP_SPP 100
+#define LIGHTMAP_SPP 1
 #define LIGHTMAP_BOUNCES 15
 
 struct GlobalUniforms
@@ -957,8 +957,11 @@ private:
             rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
 
             // Check if the ray intersects the scene
-            if (rayhit.ray.tfar == INFINITY)
-                return color * sky_color;
+			if (rayhit.ray.tfar == INFINITY)
+			{
+				float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
+				return color * sky_color * sky_dir;
+			}
 
             color *= albedo;
 
