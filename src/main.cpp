@@ -21,8 +21,8 @@
 #define CAMERA_FAR_PLANE 1000.0f
 #define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
-#define LIGHTMAP_SPP 1
-#define LIGHTMAP_BOUNCES 15
+#define LIGHTMAP_SPP 100
+#define LIGHTMAP_BOUNCES 6
 
 struct GlobalUniforms
 {
@@ -223,8 +223,6 @@ private:
 
         ImGui::Checkbox("Denoise Lightmap", &m_denoise);
 
-		ImGui::Checkbox("Bake Ambient Occlusion", &m_bake_ambient_occlusion);
-
 		if (ImGui::Checkbox("Bilinear Filtering", &m_bilinear_filtering))
 		{
 			if (m_bilinear_filtering)
@@ -233,8 +231,7 @@ private:
 			    m_lightmap_texture->set_mag_filter(GL_NEAREST);
 		}
 
-		if (!m_bake_ambient_occlusion)
-			ImGui::InputFloat3("Light Direction", &m_light_direction.x);
+		ImGui::InputFloat3("Light Direction", &m_light_direction.x);
 
         ImGui::InputInt("SPP", &m_num_samples);
 
@@ -647,6 +644,8 @@ private:
 
         m_embree_scene = rtcNewScene(m_embree_device);
 
+		rtcSetSceneFlags(m_embree_scene, RTC_SCENE_FLAG_ROBUST);
+
         m_embree_triangle_mesh = rtcNewGeometry(m_embree_device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
         std::vector<glm::vec3> vertices(mesh->vertex_count());
@@ -914,6 +913,7 @@ private:
     {
         glm::vec3 color;
         const glm::vec3 albedo = glm::vec3(0.7f);
+        const glm::vec3 sky_color = glm::vec3(1.0f);
 
 		RTCRayHit rayhit;
 
@@ -923,74 +923,38 @@ private:
 
         p += glm::sign(n) * abs(p * 0.0000002f);
 
-		if (m_bake_ambient_occlusion)
-		{
-			color                     = glm::vec3(1.0f);
-			const glm::vec3 sky_color = glm::vec3(1.0f);
-			
-			for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
-			{
-			    RTCIntersectContext intersect_context;
-			    rtcInitIntersectContext(&intersect_context);
-			
-			    // Get a random direction
-			    d = sample_cosine_lobe_direction(n);
-			    //d = random_in_unit_sphere();
-			
-			    // Create a ray in the selected random direction
-			    create_ray(d, p, rayhit);
-			
-			    // Interesect ray with the scene
-			    rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
-			
-			    // Check if the ray intersects the scene
-			    if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
-			    {
-			        float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-			        return color * sky_color * sky_dir;
-			    }
-			
-			    color *= albedo;
-			
-			    p = p + d * rayhit.ray.tfar;
-			    n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
-			
-			    // Add bias to position
-			    p += glm::sign(n) * abs(p * 0.0000002f);
-			}
-		}
-		else
-		{
-			color                 = glm::vec3(0.0f);
-			glm::vec3 attenuation = glm::vec3(1.0f);
+		color                 = glm::vec3(0.0f);
+        glm::vec3 attenuation = glm::vec3(1.0f);
 
-			for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
-			{
-			    RTCIntersectContext intersect_context;
-			    rtcInitIntersectContext(&intersect_context);
-			
-			    d = sample_cosine_lobe_direction(n);
-			
-			    create_ray(d, p, rayhit);
-			
-			    rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
-			
-			    // Does intersect scene
-			    if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
-			        return color;
-			
-			    p = p + d * rayhit.ray.tfar;
-			
-			    // Add bias to position
-			    p += glm::sign(n) * abs(p * 0.0000002f);
-			
-			    n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
-			
-			    color += evaluate_direct_lighting(intersect_context, p, n) * attenuation;
-			
-			    attenuation *= albedo;
-			}
-		}
+        for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
+        {
+            RTCIntersectContext intersect_context;
+            rtcInitIntersectContext(&intersect_context);
+
+            d = sample_cosine_lobe_direction(n);
+
+            create_ray(d, p, rayhit);
+
+            rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
+
+            // Does intersect scene
+            if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
+            {
+                float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
+                return sky_color * sky_dir;
+            }
+
+            p = p + d * rayhit.ray.tfar;
+
+            // Add bias to position
+            p += glm::sign(n) * abs(p * 0.0000002f);
+
+            n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+
+            color += evaluate_direct_lighting(intersect_context, p, n) * attenuation;
+
+            attenuation *= albedo;
+        }
         
         return color;
     }
@@ -1205,7 +1169,6 @@ private:
     bool      m_enable_conservative_raster = true;
 	bool m_denoise = true;
     bool      m_bilinear_filtering          = true;
-        bool  m_bake_ambient_occlusion     = true;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
