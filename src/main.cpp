@@ -222,6 +222,14 @@ private:
 
         ImGui::Checkbox("Denoise Lightmap", &m_denoise);
 
+		if (ImGui::Checkbox("Bilinear Filtering", &m_bilinear_filtering))
+		{
+			if (m_bilinear_filtering)
+			    m_lightmap_texture->set_mag_filter(GL_LINEAR);
+			else
+			    m_lightmap_texture->set_mag_filter(GL_NEAREST);
+		}
+
         ImGui::InputInt("SPP", &m_num_samples);
 
         if (ImGui::Button("Bake"))
@@ -662,8 +670,6 @@ private:
         rtcAttachGeometry(m_embree_scene, m_embree_triangle_mesh);
         rtcCommitScene(m_embree_scene);
 
-        rtcInitIntersectContext(&m_embree_intersect_context);
-
         return true;
     }
 
@@ -841,7 +847,7 @@ private:
 
         assert(!is_nan(t));
 
-        return make_rotation_matrix(n) * t;
+        return glm::normalize(make_rotation_matrix(n) * t);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -858,7 +864,7 @@ private:
 
         rayhit.ray.tnear     = 0;
         rayhit.ray.tfar      = INFINITY;
-        rayhit.ray.mask      = 0;
+        rayhit.ray.mask      = -1;
         rayhit.ray.flags     = 0;
         rayhit.hit.geomID    = RTC_INVALID_GEOMETRY_ID;
         rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
@@ -884,10 +890,10 @@ private:
 
         rayhit.tnear = 0;
         rayhit.tfar  = INFINITY;
-        rayhit.mask  = 0;
+        rayhit.mask  = -1;
         rayhit.flags = 0;
 
-        rtcOccluded1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+        //rtcOccluded1(m_embree_scene, &m_embree_intersect_context, &rayhit);
 
         // Is it visible?
         if (rayhit.tfar != INFINITY)
@@ -946,6 +952,9 @@ private:
 
         for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
         {
+            RTCIntersectContext intersect_context;
+            rtcInitIntersectContext(&intersect_context);
+
             // Get a random direction
             d = sample_cosine_lobe_direction(n);
             //d = random_in_unit_sphere();
@@ -954,10 +963,10 @@ private:
             create_ray(d, p, rayhit);
 
             // Interesect ray with the scene
-            rtcIntersect1(m_embree_scene, &m_embree_intersect_context, &rayhit);
+            rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
 
             // Check if the ray intersects the scene
-			if (rayhit.ray.tfar == INFINITY)
+            if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
 			{
 				float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
 				return color * sky_color * sky_dir;
@@ -1175,8 +1184,7 @@ private:
     RTCDevice           m_embree_device        = nullptr;
     RTCScene            m_embree_scene         = nullptr;
     RTCGeometry         m_embree_triangle_mesh = nullptr;
-    RTCIntersectContext m_embree_intersect_context;
-
+    
 	// Open Image Denoise
     OIDNDevice m_oidn_device;
     OIDNFilter m_oidn_filter;
@@ -1185,6 +1193,7 @@ private:
     bool      is_hit                       = false;
     bool      m_enable_conservative_raster = true;
 	bool m_denoise = true;
+    bool      m_bilinear_filtering          = true;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
