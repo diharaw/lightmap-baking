@@ -24,8 +24,8 @@ uniform sampler2D s_Normal;
 
 void main(void)
 {
-    ivec2 size = textureSize(s_Position, 0);
-    vec2 pixel_offset = vec2(1.0/float(size.x), 1.0/float(size.y));
+    ivec2 size         = textureSize(s_Position, 0);
+    vec2  pixel_offset = vec2(1.0 / float(size.x), 1.0 / float(size.y));
 
     {
         vec4 c = texture(s_Position, FS_IN_TexCoord);
@@ -56,6 +56,6 @@ void main(void)
 
         FS_OUT_Normal = c;
     }
-} 
+}
 
 // ------------------------------------------------------------------

@@ -55,12 +55,11 @@ struct LightmapMesh
 class Lightmaps : public dw::Application
 {
 protected:
-
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     bool init(int argc, const char* argv[]) override
     {
-        m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
+        m_distribution    = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
         m_light_direction = glm::normalize(glm::vec3(0.0f, -1.0f, -0.2f));
 
         create_lightmap_buffers();
@@ -83,11 +82,11 @@ protected:
 
         initialize_lightmap();
 
-		if (!load_cached_lightmap())
-			bake_lightmap();
+        if (!load_cached_lightmap())
+            bake_lightmap();
 
         m_transform = glm::mat4(1.0f);
-		m_transform = glm::scale(m_transform, glm::vec3(0.1f));
+        m_transform = glm::scale(m_transform, glm::vec3(0.1f));
 
         return true;
     }
@@ -97,7 +96,7 @@ protected:
     void update(double delta) override
     {
         if (m_debug_gui)
-			gui();
+            gui();
 
         // Update camera.
         update_camera();
@@ -106,8 +105,8 @@ protected:
 
         render_lit_scene();
 
-		if (m_debug_gui)
-			visualize_lightmap();
+        if (m_debug_gui)
+            visualize_lightmap();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -189,7 +188,6 @@ protected:
     // -----------------------------------------------------------------------------------------------------------------------------------
 
 protected:
-
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     dw::AppSettings intial_app_settings() override
@@ -210,7 +208,6 @@ protected:
     // -----------------------------------------------------------------------------------------------------------------------------------
 
 private:
-
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     void gui()
@@ -218,26 +215,26 @@ private:
         if (ImGui::Checkbox("Conservative Rasterization", &m_enable_conservative_raster))
             initialize_lightmap();
 
-		if (ImGui::Checkbox("Bilinear Filtering", &m_bilinear_filtering))
-		{
-			if (m_bilinear_filtering)
-			    m_lightmap_texture->set_mag_filter(GL_LINEAR);
-			else
-			    m_lightmap_texture->set_mag_filter(GL_NEAREST);
-		}
+        if (ImGui::Checkbox("Bilinear Filtering", &m_bilinear_filtering))
+        {
+            if (m_bilinear_filtering)
+                m_lightmap_texture->set_mag_filter(GL_LINEAR);
+            else
+                m_lightmap_texture->set_mag_filter(GL_NEAREST);
+        }
 
-		ImGui::InputFloat3("Light Direction", &m_light_direction.x);
+        ImGui::InputFloat3("Light Direction", &m_light_direction.x);
 
         ImGui::InputInt("SPP", &m_num_samples);
 
-		if (ImGui::Button("Bake"))
-			bake_lightmap();
+        if (ImGui::Button("Bake"))
+            bake_lightmap();
 
-		if (ImGui::Button("Save to Disk"))
+        if (ImGui::Button("Save to Disk"))
             write_lightmap();
     }
 
-	// -----------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------------------------------------------
 
     void initialize_lightmap()
     {
@@ -283,7 +280,7 @@ private:
                 glDisable(GL_INTEL_conservative_rasterization);
         }
 
-		glFinish();
+        glFinish();
 
         // Dialate
 
@@ -317,17 +314,17 @@ private:
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_normal_texture[1]->target(), 0, m_lightmap_normal_texture[1]->format(), m_lightmap_normal_texture[1]->type(), m_ray_directions.data()));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_texture[1]->target(), 0));
 
-		glFinish();
+        glFinish();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void create_lightmap_buffers()
-	{
-		m_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+    void create_lightmap_buffers()
+    {
+        m_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
         m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
         m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-	}
+    }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -440,7 +437,7 @@ private:
         m_lightmap_normal_texture[0] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[1] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
-		m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[1]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_normal_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -574,12 +571,12 @@ private:
         dw::Vertex* vertex_ptr = mesh->vertices();
         uint32_t*   index_ptr  = mesh->indices();
 
-		for (int i = 0; i < mesh->vertex_count(); i++)
-		{
-			positions[i] = vertex_ptr[i].position;
-			normals[i]   = vertex_ptr[i].normal;
-			uvs[i]   = vertex_ptr[i].tex_coord;
-		}
+        for (int i = 0; i < mesh->vertex_count(); i++)
+        {
+            positions[i] = vertex_ptr[i].position;
+            normals[i]   = vertex_ptr[i].normal;
+            uvs[i]       = vertex_ptr[i].tex_coord;
+        }
 
         for (int mesh_idx = 0; mesh_idx < mesh->sub_mesh_count(); mesh_idx++)
         {
@@ -592,7 +589,7 @@ private:
             mesh_decl.vertexPositionData   = &positions[0];
             mesh_decl.vertexNormalStride   = sizeof(glm::vec3);
             mesh_decl.vertexNormalData     = &normals[0];
-            mesh_decl.vertexUvStride	   = sizeof(glm::vec2);
+            mesh_decl.vertexUvStride       = sizeof(glm::vec2);
             mesh_decl.vertexUvData         = &uvs[0];
             mesh_decl.indexCount           = submesh.index_count;
             mesh_decl.indexData            = &mesh->indices()[submesh.base_index];
@@ -640,7 +637,7 @@ private:
 
         m_embree_scene = rtcNewScene(m_embree_device);
 
-		rtcSetSceneFlags(m_embree_scene, RTC_SCENE_FLAG_ROBUST);
+        rtcSetSceneFlags(m_embree_scene, RTC_SCENE_FLAG_ROBUST);
 
         m_embree_triangle_mesh = rtcNewGeometry(m_embree_device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
@@ -907,11 +904,11 @@ private:
 
     glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position)
     {
-        glm::vec3 color;
-        const glm::vec3 albedo = glm::vec3(0.7f);
+        glm::vec3       color;
+        const glm::vec3 albedo    = glm::vec3(0.7f);
         const glm::vec3 sky_color = glm::vec3(1.0f);
 
-		RTCRayHit rayhit;
+        RTCRayHit rayhit;
 
         glm::vec3 p = position;
         glm::vec3 n = direction;
@@ -919,7 +916,7 @@ private:
 
         p += glm::sign(n) * abs(p * 0.0000002f);
 
-		color                 = glm::vec3(0.0f);
+        color                 = glm::vec3(0.0f);
         glm::vec3 attenuation = glm::vec3(1.0f);
 
         for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
@@ -951,13 +948,13 @@ private:
 
             attenuation *= albedo;
         }
-        
+
         return color;
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	bool load_cached_lightmap()
+    bool load_cached_lightmap()
     {
         FILE* lm = fopen("lightmap.raw", "r");
 
@@ -971,26 +968,26 @@ private:
 
             fclose(lm);
 
-			return true;
+            return true;
         }
         else
             return false;
-	}
+    }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void write_lightmap()
+    void write_lightmap()
     {
-		FILE* lm = fopen("lightmap.raw", "wb");
-		
-		size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 4;
+        FILE* lm = fopen("lightmap.raw", "wb");
 
-		fwrite(m_framebuffer.data(), n, 1, lm);
-		
-		fclose(lm);
+        size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 4;
+
+        fwrite(m_framebuffer.data(), n, 1, lm);
+
+        fclose(lm);
     }
 
-	// -----------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------------------------------------------
 
     void bake_lightmap()
     {
@@ -998,7 +995,7 @@ private:
 
         float w = 1.0f / float(m_num_samples);
 
-		#pragma omp parallel for
+#pragma omp parallel for
         for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
         {
             for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
@@ -1014,15 +1011,15 @@ private:
                         color += path_trace(normal, position) * w;
                 }
 
-				m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(color, 1.0f);
+                m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(color, 1.0f);
             }
         }
 
-		m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
+        m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
-		glFinish();
+        glFinish();
 
-		write_lightmap();
+        write_lightmap();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1125,19 +1122,19 @@ private:
     int   m_num_samples        = LIGHTMAP_SPP;
 
     // Embree structure
-    RTCDevice           m_embree_device        = nullptr;
-    RTCScene            m_embree_scene         = nullptr;
-    RTCGeometry         m_embree_triangle_mesh = nullptr;
+    RTCDevice   m_embree_device        = nullptr;
+    RTCScene    m_embree_scene         = nullptr;
+    RTCGeometry m_embree_triangle_mesh = nullptr;
 
     glm::vec3 m_hit_pos;
     bool      is_hit                       = false;
     bool      m_enable_conservative_raster = true;
-    bool      m_bilinear_filtering          = true;
+    bool      m_bilinear_filtering         = true;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
 
-	glm::vec3 m_light_direction;
+    glm::vec3 m_light_direction;
 
     // Camera orientation.
     float m_camera_x;

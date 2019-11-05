@@ -23,7 +23,7 @@ out vec3 FS_IN_Normal;
 void main()
 {
     FS_IN_Position = VS_IN_Position;
-    FS_IN_Normal = VS_IN_Normal;
+    FS_IN_Normal   = VS_IN_Normal;
 
     vec2 clip_space_pos = 2.0 * VS_IN_LightMapUV - 1.0;
 
