@@ -22,7 +22,7 @@
 #define LIGHTMAP_TEXTURE_SIZE 4096
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
-#define LIGHTMAP_BOUNCES 6
+#define LIGHTMAP_BOUNCES 2
 
 struct GlobalUniforms
 {
@@ -232,6 +232,9 @@ private:
 
         if (ImGui::Button("Save to Disk"))
             write_lightmap();
+
+		if (ImGui::Button("Upload"))
+            m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------

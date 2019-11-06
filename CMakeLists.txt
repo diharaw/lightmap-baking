@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
-project("Lightmaps")
+project("PrecomputeGI")
 
 IF(APPLE)
 	set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++14")
@@ -17,11 +17,11 @@ add_subdirectory(external/dwSampleFramework)
 
 set(XATLAS_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/xatlas")
 set(EMBREE_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/embree/include/embree3")
-set(OIDN_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/oidn/include/OpenImageDenoise")
+set(HOSEKSKY_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/HosekSky")
 
 include_directories("${DW_SAMPLE_FRAMEWORK_INCLUDES}"
 					"${XATLAS_INCLUDE_DIRS}"
 					"${EMBREE_INCLUDE_DIRS}"
-					"${OIDN_INCLUDE_DIRS}")
+					"${HOSEKSKY_INCLUDE_DIRS}")
 
 add_subdirectory(src)
