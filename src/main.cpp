@@ -16,10 +16,10 @@
 #include <rtcore_device.h>
 #include <rtcore_scene.h>
 #include <xatlas.h>
-#include <oidn.h>
+#include "skybox.h"
 
 #define CAMERA_FAR_PLANE 1000.0f
-#define LIGHTMAP_TEXTURE_SIZE 4096
+#define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
 #define LIGHTMAP_BOUNCES 2
@@ -75,7 +75,7 @@ protected:
         if (!create_uniform_buffer())
             return false;
 
-        create_framebuffers();
+        create_textures();
 
         // Create camera.
         create_camera();
@@ -88,7 +88,7 @@ protected:
         m_transform = glm::mat4(1.0f);
         m_transform = glm::scale(m_transform, glm::vec3(0.1f));
 
-        return true;
+        return m_skybox.initialize(glm::vec3(-0.7500f, 0.9770f, -0.4000f), glm::vec3(0.5f), 2.0f);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -104,6 +104,8 @@ protected:
         update_global_uniforms(m_global_uniforms);
 
         render_lit_scene();
+
+		m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
 
         if (m_debug_gui)
             visualize_lightmap();
@@ -125,7 +127,7 @@ protected:
         // Override window resized method to update camera projection.
         m_main_camera->update_projection(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height));
 
-        create_framebuffers();
+        create_textures();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -432,14 +434,14 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void create_framebuffers()
+    void create_textures()
     {
         m_lightmap_texture           = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_pos_texture[0]    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_pos_texture[1]    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[0] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[1] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-
+        
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[1]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -1097,7 +1099,7 @@ private:
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_pos_texture[2];
     std::unique_ptr<dw::Texture2D> m_lightmap_normal_texture[2];
-
+    
     std::unique_ptr<dw::Framebuffer> m_lightmap_fbo[2];
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
@@ -1138,6 +1140,7 @@ private:
     std::uniform_real_distribution<float> m_distribution;
 
     glm::vec3 m_light_direction;
+    Skybox    m_skybox;
 
     // Camera orientation.
     float m_camera_x;
