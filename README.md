@@ -1,7 +1,7 @@
 [![License: MIT](https://img.shields.io/packagist/l/doctrine/orm.svg)](https://opensource.org/licenses/MIT)
 
 # Lightmaps
-An OpenGL sample for generating path traced lightmaps for real-time rendering applications.
+An OpenGL sample for generating path traced indirect diffuse lightmaps for real-time rendering applications.
 
 ## Screenshots
 
