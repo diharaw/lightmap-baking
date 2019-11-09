@@ -60,9 +60,16 @@ protected:
     bool init(int argc, const char* argv[]) override
     {
         m_distribution    = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
-        m_light_direction = glm::normalize(glm::vec3(0.0f, -1.0f, -0.2f));
+
+		glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
+        m_light_direction = -default_light_dir;
 
         create_lightmap_buffers();
+
+        m_lightmap_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+
+		if (!load_cached_lightmap())
+            bake_lightmap();
 
         // Load scene.
         if (!load_scene())
@@ -75,20 +82,17 @@ protected:
         if (!create_uniform_buffer())
             return false;
 
-        create_textures();
+		create_textures();
+
+		initialize_lightmap();
 
         // Create camera.
         create_camera();
 
-        initialize_lightmap();
-
-        if (!load_cached_lightmap())
-            bake_lightmap();
-
         m_transform = glm::mat4(1.0f);
         m_transform = glm::scale(m_transform, glm::vec3(0.1f));
 
-        return m_skybox.initialize(glm::vec3(-0.7500f, 0.9770f, -0.4000f), glm::vec3(0.5f), 2.0f);
+        return m_skybox.initialize(default_light_dir, glm::vec3(0.5f), 2.0f);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -105,7 +109,7 @@ protected:
 
         render_lit_scene();
 
-		m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
+        m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
 
         if (m_debug_gui)
             visualize_lightmap();
@@ -235,7 +239,7 @@ private:
         if (ImGui::Button("Save to Disk"))
             write_lightmap();
 
-		if (ImGui::Button("Upload"))
+        if (ImGui::Button("Upload"))
             m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
     }
 
@@ -436,12 +440,11 @@ private:
 
     void create_textures()
     {
-        m_lightmap_texture           = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_pos_texture[0]    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_pos_texture[1]    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[0] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_texture[1] = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        
+
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[0]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_pos_texture[1]->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -911,7 +914,6 @@ private:
     {
         glm::vec3       color;
         const glm::vec3 albedo    = glm::vec3(0.7f);
-        const glm::vec3 sky_color = glm::vec3(1.0f);
 
         RTCRayHit rayhit;
 
@@ -939,7 +941,7 @@ private:
             if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
             {
                 float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-                return sky_color * sky_dir;
+                return m_skybox.sample_sky(d) * sky_dir;
             }
 
             p = p + d * rayhit.ray.tfar;
@@ -1099,7 +1101,7 @@ private:
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_pos_texture[2];
     std::unique_ptr<dw::Texture2D> m_lightmap_normal_texture[2];
-    
+
     std::unique_ptr<dw::Framebuffer> m_lightmap_fbo[2];
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;

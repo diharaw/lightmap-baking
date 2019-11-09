@@ -188,7 +188,7 @@ glm::vec3 Skybox::sample_sky(glm::vec3 dir)
     // units used during rendering
     radiance *= 683.0f;
 
-    radiance *= FP16_SCALE;
+    //radiance *= FP16_SCALE;
 
     return radiance;
 }
