@@ -34,23 +34,6 @@ struct GlobalUniforms
     glm::vec4 cam_pos;
 };
 
-struct SubmeshConfig
-{
-    uint32_t lightmap_idx;
-};
-
-struct AtlasConfig
-{
-    uint32_t width;
-    uint32_t height;
-};
-
-struct MeshLightmappingConfig
-{
-    std::vector<AtlasConfig>   atlas_configs;
-    std::vector<SubmeshConfig> submesh_configs;
-};
-
 struct LightmapVertex
 {
     glm::vec3 position;
@@ -64,21 +47,10 @@ struct LightmapVertex
 struct LightmapMesh
 {
     std::vector<dw::SubMesh>          submeshes;
+    std::vector<glm::vec3>            submesh_colors;
     std::unique_ptr<dw::VertexBuffer> vbo;
     std::unique_ptr<dw::IndexBuffer>  ibo;
     std::unique_ptr<dw::VertexArray>  vao;
-    std::vector<std::unique_ptr<dw::Texture2D>> lightmaps;
-    MeshLightmappingConfig                      config;
-
-	LightmapMesh()
-	{
-
-	}
-
-	LightmapMesh(std::vector<LightmapVertex>& vertices, std::vector<uint32_t>& indices, uint32_t num_submeshes, dw::SubMesh* submeshes, MeshLightmappingConfig config)
-	{
-
-	}
 };
 
 class Lightmaps : public dw::Application
@@ -92,6 +64,7 @@ protected:
 
         glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
         m_light_direction           = -default_light_dir;
+        m_light_color               = glm::vec3(1000.0f);
 
         create_lightmap_buffers();
 
@@ -140,8 +113,26 @@ protected:
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
 
-        if (m_debug_gui)
-            visualize_lightmap();
+		if (m_visualize_atlas)
+        {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glViewport(0, 0, m_height, m_height);
+
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+
+            if (m_highlight_submeshes)
+                visualize_atlas_submeshes();
+			else
+			{
+				visualize_lightmap();
+
+				if (m_highlight_wireframe)
+					visualize_atlas_submeshes();
+			}
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -257,6 +248,14 @@ private:
             else
                 m_lightmap_texture->set_mag_filter(GL_NEAREST);
         }
+
+		ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
+
+		if (m_visualize_atlas)
+		{
+			ImGui::Checkbox("Hightlight Submeshes", &m_highlight_submeshes);
+			ImGui::Checkbox("Hightlight Wireframe", &m_highlight_wireframe);
+		}
 
         ImGui::InputFloat3("Light Direction", &m_light_direction.x);
 
@@ -383,6 +382,7 @@ private:
             m_triangle_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
             m_lightmap_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
             m_visualize_lightmap_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
+            m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
             m_dialate_fs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
 
             {
@@ -403,6 +403,26 @@ private:
                 }
 
                 m_lightmap_program->uniform_block_binding("GlobalUniforms", 0);
+            }
+
+			{
+                if (!m_lightmap_vs || !m_visualize_submeshes_fs)
+                {
+                    DW_LOG_FATAL("Failed to create Shaders");
+                    return false;
+                }
+
+                // Create general shader program
+                dw::Shader* shaders[] = { m_lightmap_vs.get(), m_visualize_submeshes_fs.get() };
+                m_visualize_submeshes_program = std::make_unique<dw::Program>(2, shaders);
+
+                if (!m_visualize_submeshes_program)
+                {
+                    DW_LOG_FATAL("Failed to create Shader Program");
+                    return false;
+                }
+
+                m_visualize_submeshes_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
             {
@@ -539,7 +559,10 @@ private:
         std::vector<uint32_t>       indices;
 
         for (int i = 0; i < mesh->sub_mesh_count(); i++)
+        {
             m_unwrapped_mesh.submeshes.push_back(mesh->sub_meshes()[i]);
+            m_unwrapped_mesh.submesh_colors.push_back(glm::vec3(drand48(), drand48(), drand48()));
+		}
 
         uint32_t index_count  = 0;
         uint32_t vertex_count = 0;
@@ -785,9 +808,6 @@ private:
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, 512, 512);
-
         // Bind shader program.
         m_visualize_lightmap_program->use();
 
@@ -796,6 +816,53 @@ private:
 
         // Render fullscreen triangle
         glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+
+	// -----------------------------------------------------------------------------------------------------------------------------------
+
+    void visualize_atlas_submeshes()
+    {
+        if (m_enable_conservative_raster)
+        {
+            if (GLAD_GL_NV_conservative_raster)
+                glEnable(GL_CONSERVATIVE_RASTERIZATION_NV);
+            else if (GLAD_GL_INTEL_conservative_rasterization)
+                glEnable(GL_INTEL_conservative_rasterization);
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+
+        glDisable(GL_CULL_FACE);
+
+		if (m_highlight_wireframe)
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+		// Bind shader program.
+        m_visualize_submeshes_program->use();
+
+        // Bind vertex array.
+        m_unwrapped_mesh.vao->bind();
+
+        for (uint32_t i = 0; i < m_unwrapped_mesh.submeshes.size(); i++)
+        {
+            dw::SubMesh& submesh = m_unwrapped_mesh.submeshes[i];
+
+			m_visualize_submeshes_program->set_uniform("u_Color", m_unwrapped_mesh.submesh_colors[i]);
+
+            // Issue draw call.
+            glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
+        }
+
+        if (m_enable_conservative_raster)
+        {
+            if (GLAD_GL_NV_conservative_raster)
+                glDisable(GL_CONSERVATIVE_RASTERIZATION_NV);
+            else if (GLAD_GL_INTEL_conservative_rasterization)
+                glDisable(GL_INTEL_conservative_rasterization);
+        }
+
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -911,7 +978,7 @@ private:
     {
         const glm::vec3 l      = -m_light_direction;
         const glm::vec3 albedo = glm::vec3(0.7f);
-        const glm::vec3 li     = glm::vec3(1.0f);
+        const glm::vec3 li     = m_light_color;
 
         RTCRay rayhit;
 
@@ -1117,6 +1184,7 @@ private:
     std::unique_ptr<dw::Shader> m_dialate_fs;
     std::unique_ptr<dw::Shader> m_mesh_fs;
     std::unique_ptr<dw::Shader> m_visualize_lightmap_fs;
+    std::unique_ptr<dw::Shader> m_visualize_submeshes_fs;
 
     std::unique_ptr<dw::Shader> m_lightmap_vs;
     std::unique_ptr<dw::Shader> m_triangle_vs;
@@ -1125,6 +1193,7 @@ private:
     std::unique_ptr<dw::Program> m_lightmap_program;
     std::unique_ptr<dw::Program> m_dialate_program;
     std::unique_ptr<dw::Program> m_visualize_lightmap_program;
+    std::unique_ptr<dw::Program> m_visualize_submeshes_program;
     std::unique_ptr<dw::Program> m_mesh_program;
 
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
@@ -1162,15 +1231,17 @@ private:
     RTCScene    m_embree_scene         = nullptr;
     RTCGeometry m_embree_triangle_mesh = nullptr;
 
-    glm::vec3 m_hit_pos;
-    bool      is_hit                       = false;
     bool      m_enable_conservative_raster = true;
     bool      m_bilinear_filtering         = true;
+    bool      m_visualize_atlas = false;
+    bool      m_highlight_submeshes = false;
+    bool      m_highlight_wireframe = false;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
 
     glm::vec3 m_light_direction;
+    glm::vec3 m_light_color;
     Skybox    m_skybox;
 
     // Camera orientation.
