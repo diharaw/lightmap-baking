@@ -34,6 +34,23 @@ struct GlobalUniforms
     glm::vec4 cam_pos;
 };
 
+struct SubmeshConfig
+{
+    uint32_t lightmap_idx;
+};
+
+struct AtlasConfig
+{
+    uint32_t width;
+    uint32_t height;
+};
+
+struct MeshLightmappingConfig
+{
+    std::vector<AtlasConfig>   atlas_configs;
+    std::vector<SubmeshConfig> submesh_configs;
+};
+
 struct LightmapVertex
 {
     glm::vec3 position;
@@ -50,6 +67,18 @@ struct LightmapMesh
     std::unique_ptr<dw::VertexBuffer> vbo;
     std::unique_ptr<dw::IndexBuffer>  ibo;
     std::unique_ptr<dw::VertexArray>  vao;
+    std::vector<std::unique_ptr<dw::Texture2D>> lightmaps;
+    MeshLightmappingConfig                      config;
+
+	LightmapMesh()
+	{
+
+	}
+
+	LightmapMesh(std::vector<LightmapVertex>& vertices, std::vector<uint32_t>& indices, uint32_t num_submeshes, dw::SubMesh* submeshes, MeshLightmappingConfig config)
+	{
+
+	}
 };
 
 class Lightmaps : public dw::Application
@@ -59,16 +88,16 @@ protected:
 
     bool init(int argc, const char* argv[]) override
     {
-        m_distribution    = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
+        m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
 
-		glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
-        m_light_direction = -default_light_dir;
+        glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
+        m_light_direction           = -default_light_dir;
 
         create_lightmap_buffers();
 
         m_lightmap_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
-		if (!load_cached_lightmap())
+        if (!load_cached_lightmap())
             bake_lightmap();
 
         // Load scene.
@@ -82,9 +111,9 @@ protected:
         if (!create_uniform_buffer())
             return false;
 
-		create_textures();
+        create_textures();
 
-		initialize_lightmap();
+        initialize_lightmap();
 
         // Create camera.
         create_camera();
@@ -913,7 +942,7 @@ private:
     glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position)
     {
         glm::vec3       color;
-        const glm::vec3 albedo    = glm::vec3(0.7f);
+        const glm::vec3 albedo = glm::vec3(0.7f);
 
         RTCRayHit rayhit;
 
