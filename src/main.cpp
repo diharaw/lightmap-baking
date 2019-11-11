@@ -22,7 +22,7 @@
 #define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
-#define LIGHTMAP_BOUNCES 2
+#define LIGHTMAP_BOUNCES 6
 
 struct GlobalUniforms
 {
@@ -64,7 +64,7 @@ protected:
 
         glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
         m_light_direction           = -default_light_dir;
-        m_light_color               = glm::vec3(1000.0f);
+        m_light_color               = glm::vec3(10000.0f);
 
         create_lightmap_buffers();
 
@@ -113,25 +113,24 @@ protected:
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
 
-		if (m_visualize_atlas)
+        if (m_visualize_atlas)
         {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			glViewport(0, 0, m_height, m_height);
+            glViewport(0, 0, m_height, m_height);
 
-			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
-
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
 
             if (m_highlight_submeshes)
                 visualize_atlas_submeshes();
-			else
-			{
-				visualize_lightmap();
+            else
+            {
+                visualize_lightmap();
 
-				if (m_highlight_wireframe)
-					visualize_atlas_submeshes();
-			}
+                if (m_highlight_wireframe)
+                    visualize_atlas_submeshes();
+            }
         }
     }
 
@@ -249,13 +248,13 @@ private:
                 m_lightmap_texture->set_mag_filter(GL_NEAREST);
         }
 
-		ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
+        ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
 
-		if (m_visualize_atlas)
-		{
-			ImGui::Checkbox("Hightlight Submeshes", &m_highlight_submeshes);
-			ImGui::Checkbox("Hightlight Wireframe", &m_highlight_wireframe);
-		}
+        if (m_visualize_atlas)
+        {
+            ImGui::Checkbox("Hightlight Submeshes", &m_highlight_submeshes);
+            ImGui::Checkbox("Hightlight Wireframe", &m_highlight_wireframe);
+        }
 
         ImGui::InputFloat3("Light Direction", &m_light_direction.x);
 
@@ -376,14 +375,14 @@ private:
     {
         {
             // Create general shaders
-            m_lightmap_fs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/lightmap_fs.glsl"));
-            m_mesh_vs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
-            m_mesh_fs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
-            m_triangle_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
-            m_lightmap_vs           = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
-            m_visualize_lightmap_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
+            m_lightmap_fs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/lightmap_fs.glsl"));
+            m_mesh_vs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
+            m_mesh_fs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
+            m_triangle_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
+            m_lightmap_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
+            m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
-            m_dialate_fs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
+            m_dialate_fs             = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -405,7 +404,7 @@ private:
                 m_lightmap_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
-			{
+            {
                 if (!m_lightmap_vs || !m_visualize_submeshes_fs)
                 {
                     DW_LOG_FATAL("Failed to create Shaders");
@@ -413,7 +412,7 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[] = { m_lightmap_vs.get(), m_visualize_submeshes_fs.get() };
+                dw::Shader* shaders[]         = { m_lightmap_vs.get(), m_visualize_submeshes_fs.get() };
                 m_visualize_submeshes_program = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_visualize_submeshes_program)
@@ -562,7 +561,7 @@ private:
         {
             m_unwrapped_mesh.submeshes.push_back(mesh->sub_meshes()[i]);
             m_unwrapped_mesh.submesh_colors.push_back(glm::vec3(drand48(), drand48(), drand48()));
-		}
+        }
 
         uint32_t index_count  = 0;
         uint32_t vertex_count = 0;
@@ -818,7 +817,7 @@ private:
         glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
-	// -----------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------------------------------------------
 
     void visualize_atlas_submeshes()
     {
@@ -835,10 +834,10 @@ private:
 
         glDisable(GL_CULL_FACE);
 
-		if (m_highlight_wireframe)
+        if (m_highlight_wireframe)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-		// Bind shader program.
+        // Bind shader program.
         m_visualize_submeshes_program->use();
 
         // Bind vertex array.
@@ -848,7 +847,7 @@ private:
         {
             dw::SubMesh& submesh = m_unwrapped_mesh.submeshes[i];
 
-			m_visualize_submeshes_program->set_uniform("u_Color", m_unwrapped_mesh.submesh_colors[i]);
+            m_visualize_submeshes_program->set_uniform("u_Color", m_unwrapped_mesh.submesh_colors[i]);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -862,7 +861,7 @@ private:
                 glDisable(GL_INTEL_conservative_rasterization);
         }
 
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -974,6 +973,13 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
+    bool is_triangle_back_facing(glm::vec3 n, glm::vec3 d)
+    {
+        return glm::dot(n, d) > 0.0f;
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
     glm::vec3 evaluate_direct_lighting(RTCIntersectContext& context, glm::vec3 p, glm::vec3 n)
     {
         const glm::vec3 l      = -m_light_direction;
@@ -1041,11 +1047,13 @@ private:
             }
 
             p = p + d * rayhit.ray.tfar;
+            n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+
+			if (is_triangle_back_facing(n, d))
+                break;
 
             // Add bias to position
             p += glm::sign(n) * abs(p * 0.0000002f);
-
-            n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
 
             color += evaluate_direct_lighting(intersect_context, p, n) * attenuation;
 
@@ -1231,11 +1239,11 @@ private:
     RTCScene    m_embree_scene         = nullptr;
     RTCGeometry m_embree_triangle_mesh = nullptr;
 
-    bool      m_enable_conservative_raster = true;
-    bool      m_bilinear_filtering         = true;
-    bool      m_visualize_atlas = false;
-    bool      m_highlight_submeshes = false;
-    bool      m_highlight_wireframe = false;
+    bool m_enable_conservative_raster = true;
+    bool m_bilinear_filtering         = true;
+    bool m_visualize_atlas            = false;
+    bool m_highlight_submeshes        = false;
+    bool m_highlight_wireframe        = false;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
