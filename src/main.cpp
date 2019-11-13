@@ -258,6 +258,8 @@ private:
 
         ImGui::InputFloat3("Light Direction", &m_light_direction.x);
 
+		ImGui::InputFloat("Offset", &m_offset);
+
         ImGui::InputInt("SPP", &m_num_samples);
 
         if (ImGui::Button("Bake"))
@@ -1023,17 +1025,24 @@ private:
         glm::vec3 n = direction;
         glm::vec3 d = direction;
 
-        p += glm::sign(n) * abs(p * 0.0000002f);
+        bool first = true;
 
         color                 = glm::vec3(0.0f);
         glm::vec3 attenuation = glm::vec3(1.0f);
 
+#if 0
         for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
         {
             RTCIntersectContext intersect_context;
             rtcInitIntersectContext(&intersect_context);
 
             d = sample_cosine_lobe_direction(n);
+
+			if (first)
+            {
+                p += glm::sign(n) * abs(p * 0.0000002f);
+                first = false;
+            }
 
             create_ray(d, p, rayhit);
 
@@ -1049,8 +1058,8 @@ private:
             p = p + d * rayhit.ray.tfar;
             n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
 
-			if (is_triangle_back_facing(n, d))
-                break;
+			//if (is_triangle_back_facing(n, d))
+   //             break;
 
             // Add bias to position
             p += glm::sign(n) * abs(p * 0.0000002f);
@@ -1059,6 +1068,25 @@ private:
 
             attenuation *= albedo;
         }
+#else
+        RTCIntersectContext intersect_context;
+        rtcInitIntersectContext(&intersect_context);
+
+        p += n * m_offset;
+
+        create_ray(d, p, rayhit);
+
+        rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
+
+        // Does intersect scene
+        if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
+            return color;
+
+        n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
+
+        if (is_triangle_back_facing(n, d))
+            color = glm::vec3(1.0f, 0.0f, 0.0f);
+#endif
 
         return color;
     }
@@ -1231,6 +1259,7 @@ private:
     float m_sideways_speed     = 0.0f;
     float m_camera_sensitivity = 0.05f;
     float m_camera_speed       = 0.02f;
+    float m_offset       = 0.1f;
     bool  m_debug_gui          = true;
     int   m_num_samples        = LIGHTMAP_SPP;
 
