@@ -348,9 +348,9 @@ private:
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		// Bind shader program.
-		m_dialate_program->use();
+		m_dilate_program->use();
 
-		if (m_dialate_program->set_uniform("s_Texture", 0))
+		if (m_dilate_program->set_uniform("s_Texture", 0))
 			tex->bind(0);
 
 		// Render fullscreen triangle
@@ -386,7 +386,7 @@ private:
             m_lightmap_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
             m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
-            m_dialate_fs             = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
+            m_dilate_fs             = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -429,17 +429,17 @@ private:
             }
 
             {
-                if (!m_triangle_vs || !m_dialate_fs)
+                if (!m_triangle_vs || !m_dilate_fs)
                 {
                     DW_LOG_FATAL("Failed to create Shaders");
                     return false;
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[] = { m_triangle_vs.get(), m_dialate_fs.get() };
-                m_dialate_program     = std::make_unique<dw::Program>(2, shaders);
+                dw::Shader* shaders[] = { m_triangle_vs.get(), m_dilate_fs.get() };
+                m_dilate_program     = std::make_unique<dw::Program>(2, shaders);
 
-                if (!m_dialate_program)
+                if (!m_dilate_program)
                 {
                     DW_LOG_FATAL("Failed to create Shader Program");
                     return false;
@@ -1226,7 +1226,7 @@ private:
 private:
     // General GPU resources.
     std::unique_ptr<dw::Shader> m_lightmap_fs;
-    std::unique_ptr<dw::Shader> m_dialate_fs;
+    std::unique_ptr<dw::Shader> m_dilate_fs;
     std::unique_ptr<dw::Shader> m_mesh_fs;
     std::unique_ptr<dw::Shader> m_visualize_lightmap_fs;
     std::unique_ptr<dw::Shader> m_visualize_submeshes_fs;
@@ -1236,7 +1236,7 @@ private:
     std::unique_ptr<dw::Shader> m_mesh_vs;
 
     std::unique_ptr<dw::Program> m_lightmap_program;
-    std::unique_ptr<dw::Program> m_dialate_program;
+    std::unique_ptr<dw::Program> m_dilate_program;
     std::unique_ptr<dw::Program> m_visualize_lightmap_program;
     std::unique_ptr<dw::Program> m_visualize_submeshes_program;
     std::unique_ptr<dw::Program> m_mesh_program;
