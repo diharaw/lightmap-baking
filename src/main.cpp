@@ -66,7 +66,7 @@ protected:
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
-		// Create GPU resources.
+        // Create GPU resources.
         if (!create_shaders())
             return false;
 
@@ -238,16 +238,16 @@ private:
 
         if (ImGui::Checkbox("Bilinear Filtering", &m_bilinear_filtering))
         {
-			if (m_bilinear_filtering)
-			{
-				m_lightmap_texture->set_mag_filter(GL_LINEAR);
-				m_lightmap_dilated_texture->set_mag_filter(GL_LINEAR);
-			}
-			else
-			{
-				m_lightmap_texture->set_mag_filter(GL_NEAREST);
+            if (m_bilinear_filtering)
+            {
+                m_lightmap_texture->set_mag_filter(GL_LINEAR);
+                m_lightmap_dilated_texture->set_mag_filter(GL_LINEAR);
+            }
+            else
+            {
+                m_lightmap_texture->set_mag_filter(GL_NEAREST);
                 m_lightmap_dilated_texture->set_mag_filter(GL_NEAREST);
-			}        
+            }
         }
 
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
@@ -338,24 +338,24 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void dilate(std::unique_ptr<dw::Texture2D>& tex, std::unique_ptr<dw::Framebuffer>& fbo)
+    void dilate(std::unique_ptr<dw::Texture2D>& tex, std::unique_ptr<dw::Framebuffer>& fbo)
     {
         fbo->bind();
 
-		glViewport(0, 0, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE);
+        glViewport(0, 0, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE);
 
-		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-		// Bind shader program.
-		m_dilate_program->use();
+        // Bind shader program.
+        m_dilate_program->use();
 
-		if (m_dilate_program->set_uniform("s_Texture", 0))
-			tex->bind(0);
+        if (m_dilate_program->set_uniform("s_Texture", 0))
+            tex->bind(0);
 
-		// Render fullscreen triangle
-		glDrawArrays(GL_TRIANGLES, 0, 3);
-	}
+        // Render fullscreen triangle
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -386,7 +386,7 @@ private:
             m_lightmap_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
             m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
-            m_dilate_fs             = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
+            m_dilate_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -437,7 +437,7 @@ private:
 
                 // Create general shader program
                 dw::Shader* shaders[] = { m_triangle_vs.get(), m_dilate_fs.get() };
-                m_dilate_program     = std::make_unique<dw::Program>(2, shaders);
+                m_dilate_program      = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_dilate_program)
                 {
@@ -492,12 +492,12 @@ private:
 
     void create_textures()
     {
-        m_lightmap_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_pos_texture    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_texture                = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_pos_texture            = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_pos_dilated_texture    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_normal_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_normal_texture         = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_normal_dilated_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_dilated_texture                = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_dilated_texture        = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -506,9 +506,9 @@ private:
         m_lightmap_normal_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_normal_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
-		m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
-        m_lightmap_gbuffer_fbo = std::make_unique<dw::Framebuffer>();
-        m_lightmap_pos_dilated_fbo = std::make_unique<dw::Framebuffer>();
+        m_lightmap_dilated_fbo        = std::make_unique<dw::Framebuffer>();
+        m_lightmap_gbuffer_fbo        = std::make_unique<dw::Framebuffer>();
+        m_lightmap_pos_dilated_fbo    = std::make_unique<dw::Framebuffer>();
         m_lightmap_normal_dilated_fbo = std::make_unique<dw::Framebuffer>();
 
         {
@@ -517,8 +517,8 @@ private:
             m_lightmap_gbuffer_fbo->attach_multiple_render_targets(2, textures);
         }
 
-		m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
-		m_lightmap_pos_dilated_fbo->attach_render_target(0, m_lightmap_pos_dilated_texture.get(), 0, 0);
+        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
+        m_lightmap_pos_dilated_fbo->attach_render_target(0, m_lightmap_pos_dilated_texture.get(), 0, 0);
         m_lightmap_normal_dilated_fbo->attach_render_target(0, m_lightmap_normal_dilated_texture.get(), 0, 0);
     }
 
@@ -765,7 +765,7 @@ private:
                     m_lightmap_dilated_texture->bind(0);
                 else
                     m_lightmap_texture->bind(0);
-			}
+            }
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -1035,7 +1035,7 @@ private:
         glm::vec3 n = direction;
         glm::vec3 d = direction;
 
-       p += n * m_offset;
+        p += n * m_offset;
 
         color                 = glm::vec3(0.0f);
         glm::vec3 attenuation = glm::vec3(1.0f);
@@ -1046,7 +1046,7 @@ private:
             rtcInitIntersectContext(&intersect_context);
 
             d = sample_cosine_lobe_direction(n);
-			
+
             create_ray(d, p, rayhit);
 
             rtcIntersect1(m_embree_scene, &intersect_context, &rayhit);
@@ -1061,13 +1061,13 @@ private:
             p = p + d * rayhit.ray.tfar;
             n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
 
-			if (is_triangle_back_facing(n, d))
-			{
-				if (i == 0)
-					gutter = true;
+            if (is_triangle_back_facing(n, d))
+            {
+                if (i == 0)
+                    gutter = true;
 
-				break;
-			}
+                break;
+            }
             // Add bias to position
             p += glm::sign(n) * abs(p * 0.0000002f);
 
@@ -1109,7 +1109,7 @@ private:
 
         size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 4;
 
-		GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
+        GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), m_lightmap_dilated_texture->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_dilated_texture->target(), 0, m_lightmap_dilated_texture->format(), m_lightmap_dilated_texture->type(), m_framebuffer.data()));
 
@@ -1125,8 +1125,8 @@ private:
         glFinish();
 
         float w = 1.0f / float(m_num_samples);
-		
-		#pragma omp parallel for
+
+#pragma omp parallel for
         for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
         {
             for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
@@ -1140,30 +1140,30 @@ private:
                 {
                     bool is_at_least_one_gutter = false;
 
-					for (int sample = 0; sample < m_num_samples; sample++)
-					{
-						bool is_gutter = false;
-						color += path_trace(normal, position, is_gutter) * w;
+                    for (int sample = 0; sample < m_num_samples; sample++)
+                    {
+                        bool is_gutter = false;
+                        color += path_trace(normal, position, is_gutter) * w;
 
-						if (is_gutter)
-						    is_at_least_one_gutter = true;
-					}
+                        if (is_gutter)
+                            is_at_least_one_gutter = true;
+                    }
 
-					float alpha = 1.0f;
+                    float alpha = 1.0f;
 
-					if (is_at_least_one_gutter)
-						alpha = 0.0f;
+                    if (is_at_least_one_gutter)
+                        alpha = 0.0f;
 
-					m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(color, alpha);
+                    m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(color, alpha);
                 }
                 else
-                    m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(0.0f);            
+                    m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(0.0f);
             }
         }
 
         m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
-		dilate(m_lightmap_texture, m_lightmap_dilated_fbo);
+        dilate(m_lightmap_texture, m_lightmap_dilated_fbo);
 
         glFinish();
 
