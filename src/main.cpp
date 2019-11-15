@@ -8,7 +8,7 @@
 #include <stack>
 #include <random>
 #include <chrono>
-#include <random>
+#include <atomic>
 #include <rtccore.h>
 #include <rtcore_geometry.h>
 #include <rtcore_common.h>
@@ -19,10 +19,10 @@
 #include "skybox.h"
 
 #define CAMERA_FAR_PLANE 10000.0f
-#define LIGHTMAP_TEXTURE_SIZE 2048
+#define DEFAULT_LIGHTMAP_TEXTURE_SIZE 1024
+#define DEFAULT_LIGHTMAP_BOUNCES 6
+#define DEFAULT_LIGHTMAP_SPP 1
 #define LIGHTMAP_CHART_PADDING 6
-#define LIGHTMAP_SPP 1
-#define LIGHTMAP_BOUNCES 6
 
 struct GlobalUniforms
 {
@@ -53,7 +53,7 @@ struct LightmapMesh
     std::unique_ptr<dw::VertexArray>  vao;
 };
 
-class Lightmaps : public dw::Application
+class PrecomputedGI : public dw::Application
 {
 protected:
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -66,16 +66,6 @@ protected:
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
-        // Create GPU resources.
-        if (!create_shaders())
-            return false;
-
-        create_lightmap_buffers();
-        create_textures();
-
-        if (!load_cached_lightmap())
-            bake_lightmap();
-
         // Load scene.
         if (!load_scene())
             return false;
@@ -83,7 +73,16 @@ protected:
         if (!create_uniform_buffer())
             return false;
 
+        // Create GPU resources.
+        if (!create_shaders())
+            return false;
+
+        create_lightmap_buffers();
+        create_textures();
         initialize_lightmap();
+
+        if (!load_cached_lightmap())
+            bake_lightmap();
 
         // Create camera.
         create_camera();
@@ -221,7 +220,7 @@ protected:
         settings.major_ver    = 4;
         settings.width        = 1920;
         settings.height       = 1080;
-        settings.title        = "Lightmaps (c) 2019 Dihara Wijetunga";
+        settings.title        = "PrecomputedGI (c) 2019 Dihara Wijetunga";
 
         return settings;
     }
@@ -265,6 +264,8 @@ private:
 
         ImGui::InputInt("SPP", &m_num_samples);
 
+        ImGui::InputInt("Light Bounces", &m_lightmap_bounces);
+
         if (ImGui::Button("Bake"))
             bake_lightmap();
     }
@@ -288,7 +289,7 @@ private:
 
         m_lightmap_gbuffer_fbo->bind();
 
-        glViewport(0, 0, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE);
+        glViewport(0, 0, m_lightmap_size, m_lightmap_size);
 
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -342,7 +343,7 @@ private:
     {
         fbo->bind();
 
-        glViewport(0, 0, LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE);
+        glViewport(0, 0, m_lightmap_size, m_lightmap_size);
 
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -361,9 +362,9 @@ private:
 
     void create_lightmap_buffers()
     {
-        m_framebuffer.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-        m_ray_positions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
-        m_ray_directions.resize(LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE);
+        m_framebuffer.resize(m_lightmap_size * m_lightmap_size);
+        m_ray_positions.resize(m_lightmap_size * m_lightmap_size);
+        m_ray_directions.resize(m_lightmap_size * m_lightmap_size);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -386,7 +387,7 @@ private:
             m_lightmap_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
             m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
-            m_dilate_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dialate_fs.glsl"));
+            m_dilate_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dilate_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -492,12 +493,23 @@ private:
 
     void create_textures()
     {
-        m_lightmap_texture                = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_pos_texture            = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_pos_dilated_texture    = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_normal_texture         = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_normal_dilated_texture = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_dilated_texture        = std::make_unique<dw::Texture2D>(LIGHTMAP_TEXTURE_SIZE, LIGHTMAP_TEXTURE_SIZE, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_texture.reset();
+        m_lightmap_pos_texture.reset();
+        m_lightmap_pos_dilated_texture.reset();
+        m_lightmap_normal_texture.reset();
+        m_lightmap_normal_dilated_texture.reset();
+        m_lightmap_dilated_texture.reset();
+        m_lightmap_dilated_fbo.reset();
+        m_lightmap_gbuffer_fbo.reset();
+        m_lightmap_pos_dilated_fbo.reset();
+        m_lightmap_normal_dilated_fbo.reset();
+
+        m_lightmap_texture                = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_pos_texture            = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_pos_dilated_texture    = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_normal_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_normal_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_dilated_texture        = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -536,7 +548,7 @@ private:
 
     bool load_scene()
     {
-        dw::Mesh* mesh = dw::Mesh::load("mesh/sponza.obj");
+        dw::Mesh* mesh = dw::Mesh::load("mesh/sponza_.obj");
 
         if (!mesh)
         {
@@ -678,7 +690,7 @@ private:
         xatlas::PackOptions pack_options;
 
         pack_options.padding    = LIGHTMAP_CHART_PADDING;
-        pack_options.resolution = LIGHTMAP_TEXTURE_SIZE;
+        pack_options.resolution = m_lightmap_size;
 
         xatlas::PackCharts(atlas, pack_options);
 
@@ -901,14 +913,14 @@ private:
 
     glm::vec3 sample_direction(int x, int y)
     {
-        return m_ray_directions[LIGHTMAP_TEXTURE_SIZE * y + x];
+        return m_ray_directions[m_lightmap_size * y + x];
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     glm::vec3 sample_position(int x, int y)
     {
-        return m_ray_positions[LIGHTMAP_TEXTURE_SIZE * y + x];
+        return m_ray_positions[m_lightmap_size * y + x];
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1040,7 +1052,7 @@ private:
         color                 = glm::vec3(0.0f);
         glm::vec3 attenuation = glm::vec3(1.0f);
 
-        for (int i = 0; i < LIGHTMAP_BOUNCES; i++)
+        for (int i = 0; i < m_lightmap_bounces; i++)
         {
             RTCIntersectContext intersect_context;
             rtcInitIntersectContext(&intersect_context);
@@ -1068,6 +1080,7 @@ private:
 
                 break;
             }
+
             // Add bias to position
             p += glm::sign(n) * abs(p * 0.0000002f);
 
@@ -1075,6 +1088,8 @@ private:
 
             attenuation *= albedo;
         }
+
+        m_baked_samples++;
 
         return color;
     }
@@ -1087,7 +1102,7 @@ private:
 
         if (lm)
         {
-            size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 4;
+            size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
 
             fread(m_framebuffer.data(), n, 1, lm);
 
@@ -1107,7 +1122,7 @@ private:
     {
         FILE* lm = fopen("lightmap.raw", "wb");
 
-        size_t n = sizeof(float) * LIGHTMAP_TEXTURE_SIZE * LIGHTMAP_TEXTURE_SIZE * 4;
+        size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
 
         GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), m_lightmap_dilated_texture->id()));
@@ -1124,12 +1139,14 @@ private:
     {
         glFinish();
 
-        float w = 1.0f / float(m_num_samples);
+        m_baked_samples = 0;
+        m_total_samples = m_lightmap_size * m_lightmap_size * m_num_samples;
+        float w         = 1.0f / float(m_num_samples);
 
-#pragma omp parallel for
-        for (int y = 0; y < LIGHTMAP_TEXTURE_SIZE; y++)
+        //#pragma omp parallel for
+        for (int y = 0; y < m_lightmap_size; y++)
         {
-            for (int x = 0; x < LIGHTMAP_TEXTURE_SIZE; x++)
+            for (int x = 0; x < m_lightmap_size; x++)
             {
                 glm::vec3 color    = glm::vec3(0.0f);
                 glm::vec3 normal   = sample_direction(x, y);
@@ -1154,13 +1171,12 @@ private:
                     if (is_at_least_one_gutter)
                         alpha = 0.0f;
 
-                    m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(color, alpha);
+                    m_framebuffer[m_lightmap_size * y + x] = glm::vec4(color, alpha);
                 }
                 else
-                    m_framebuffer[LIGHTMAP_TEXTURE_SIZE * y + x] = glm::vec4(0.0f);
+					m_framebuffer[m_lightmap_size * y + x] = glm::vec4(0.0f);
             }
         }
-
         m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
         dilate(m_lightmap_texture, m_lightmap_dilated_fbo);
@@ -1276,19 +1292,25 @@ private:
     float m_camera_speed       = 0.2f;
     float m_offset             = 0.1f;
     bool  m_debug_gui          = true;
-    int   m_num_samples        = LIGHTMAP_SPP;
+
+    // Lightmap settings.
+    int m_num_samples      = DEFAULT_LIGHTMAP_SPP;
+    int m_lightmap_bounces = DEFAULT_LIGHTMAP_BOUNCES;
+    int m_lightmap_size    = DEFAULT_LIGHTMAP_TEXTURE_SIZE;
 
     // Embree structure
     RTCDevice   m_embree_device        = nullptr;
     RTCScene    m_embree_scene         = nullptr;
     RTCGeometry m_embree_triangle_mesh = nullptr;
 
-    bool m_enable_conservative_raster = true;
-    bool m_bilinear_filtering         = true;
-    bool m_visualize_atlas            = false;
-    bool m_highlight_submeshes        = false;
-    bool m_highlight_wireframe        = false;
-    bool m_dilated                    = true;
+    bool                m_enable_conservative_raster = true;
+    bool                m_bilinear_filtering         = true;
+    bool                m_visualize_atlas            = false;
+    bool                m_highlight_submeshes        = false;
+    bool                m_highlight_wireframe        = false;
+    bool                m_dilated                    = true;
+    std::atomic_int32_t m_baked_samples              = 0;
+    int32_t             m_total_samples              = 0;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
@@ -1302,4 +1324,4 @@ private:
     float m_camera_y;
 };
 
-DW_DECLARE_MAIN(Lightmaps)
+DW_DECLARE_MAIN(PrecomputedGI)
