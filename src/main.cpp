@@ -9,6 +9,7 @@
 #include <random>
 #include <chrono>
 #include <random>
+#include <fstream>
 #include <rtccore.h>
 #include <rtcore_geometry.h>
 #include <rtcore_common.h>
@@ -66,24 +67,27 @@ protected:
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
+        create_textures();
+        create_lightmap_buffers();
+
+        bool cached_available = load_cached_lightmap();
+
         // Create GPU resources.
         if (!create_shaders())
             return false;
-
-        create_lightmap_buffers();
-        create_textures();
-
-        if (!load_cached_lightmap())
-            bake_lightmap();
 
         // Load scene.
         if (!load_scene())
             return false;
 
+        create_framebuffers();
+        initialize_lightmap();
+
+        if (!cached_available)
+            bake_lightmap();
+
         if (!create_uniform_buffer())
             return false;
-
-        initialize_lightmap();
 
         // Create camera.
         create_camera();
@@ -260,10 +264,9 @@ private:
         }
 
         ImGui::InputFloat3("Light Direction", &m_light_direction.x);
-
         ImGui::InputFloat("Offset", &m_offset);
-
-        ImGui::InputInt("SPP", &m_num_samples);
+        ImGui::InputInt("Num Samples", &m_num_samples);
+        ImGui::InputInt("Num Bounces", &m_num_bounces);
 
         if (ImGui::Button("Bake"))
             bake_lightmap();
@@ -317,7 +320,7 @@ private:
 
         glFinish();
 
-        // Dialate
+        // Dilate
 
         dilate(m_lightmap_pos_texture, m_lightmap_pos_dilated_fbo);
         dilate(m_lightmap_normal_texture, m_lightmap_normal_dilated_fbo);
@@ -505,7 +508,12 @@ private:
         m_lightmap_pos_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_normal_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_normal_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+    }
 
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    void create_framebuffers()
+    {
         m_lightmap_dilated_fbo        = std::make_unique<dw::Framebuffer>();
         m_lightmap_gbuffer_fbo        = std::make_unique<dw::Framebuffer>();
         m_lightmap_pos_dilated_fbo    = std::make_unique<dw::Framebuffer>();
@@ -1083,17 +1091,19 @@ private:
 
     bool load_cached_lightmap()
     {
-        FILE* lm = fopen("lightmap.raw", "r");
+        std::fstream f("lightmap.raw", std::ios::out | std::ios::binary);
 
-        if (lm)
+        if (f.is_open())
         {
             size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
 
-            fread(m_framebuffer.data(), n, 1, lm);
+            f.read((char*)m_framebuffer.data(), n);
+
+            std::cout << m_framebuffer[0].x << ", " << m_framebuffer[0].y << ", " << m_framebuffer[0].z << std::endl;
 
             m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
 
-            fclose(lm);
+            f.close();
 
             return true;
         }
