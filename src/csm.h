@@ -45,7 +45,6 @@ struct CSM
 	void update_crop_matrices(glm::mat4 t_modelview, dw::Camera* camera);
     void update_texture_matrices(dw::Camera* camera);
     void update_far_bounds(dw::Camera* camera);
-	void bind_sdsm_uniforms(dw::Program* program, dw::Camera* camera, glm::vec3 dir);
 
     inline FrustumSplit* frustum_splits() { return &m_splits[0]; }
     inline glm::mat4 split_view_proj(int i) { return m_crop_matrices[i]; }

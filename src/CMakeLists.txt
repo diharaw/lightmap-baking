@@ -5,7 +5,11 @@ find_program(CLANG_FORMAT_EXE NAMES "clang-format" DOC "Path to clang-format exe
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-set(PRECOMPUTEDGI_SOURCES ${PROJECT_SOURCE_DIR}/src/main.cpp ${PROJECT_SOURCE_DIR}/src/skybox.h ${PROJECT_SOURCE_DIR}/src/skybox.cpp)
+set(PRECOMPUTEDGI_SOURCES ${PROJECT_SOURCE_DIR}/src/main.cpp 
+                          ${PROJECT_SOURCE_DIR}/src/skybox.h 
+                          ${PROJECT_SOURCE_DIR}/src/skybox.cpp 
+                          ${PROJECT_SOURCE_DIR}/src/csm.h 
+                          ${PROJECT_SOURCE_DIR}/src/csm.cpp)
 
 set(XATLAS_SOURCES ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.cpp
                    ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.h)

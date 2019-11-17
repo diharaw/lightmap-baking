@@ -2,6 +2,8 @@
 #include <gtc/matrix_transform.hpp>
 #include <macros.h>
 
+// -----------------------------------------------------------------------------------------------------------------------------------
+
 CSM::CSM()
 {
 	m_shadow_maps = nullptr;
@@ -12,10 +14,14 @@ CSM::CSM()
 	}
 }
 
+// -----------------------------------------------------------------------------------------------------------------------------------
+
 CSM::~CSM()
 {
 	
 }
+
+// -----------------------------------------------------------------------------------------------------------------------------------
 
 void CSM::initialize(float lambda, float near_offset, int split_count, int shadow_map_size, dw::Camera* camera, int _width, int _height, glm::vec3 dir)
 {
@@ -72,6 +78,8 @@ void CSM::initialize(float lambda, float near_offset, int split_count, int shado
 	update(camera, dir);
 }
 
+// -----------------------------------------------------------------------------------------------------------------------------------
+
 void CSM::shutdown()
 {
 	for (int i = 0; i < 8; i++)
@@ -82,6 +90,8 @@ void CSM::shutdown()
 
 	DW_SAFE_DELETE(m_shadow_maps);
 }
+
+// -----------------------------------------------------------------------------------------------------------------------------------
 
 void CSM::update(dw::Camera* camera, glm::vec3 dir)
 {
@@ -105,6 +115,8 @@ void CSM::update(dw::Camera* camera, glm::vec3 dir)
     update_far_bounds(camera);
 }
 
+// -----------------------------------------------------------------------------------------------------------------------------------
+
 void CSM::update_splits(dw::Camera* camera)
 {
 	float nd = camera->m_near;
@@ -127,6 +139,8 @@ void CSM::update_splits(dw::Camera* camera)
 
 	m_splits[m_split_count - 1].far_plane = fd;
 }
+
+// -----------------------------------------------------------------------------------------------------------------------------------
 
 void CSM::update_frustum_corners(dw::Camera* camera)
 {
@@ -165,11 +179,15 @@ void CSM::update_frustum_corners(dw::Camera* camera)
 	}
 }
 
+// -----------------------------------------------------------------------------------------------------------------------------------
+
 void CSM::update_texture_matrices(dw::Camera* camera)
 {
     for (int i = 0; i < m_split_count; i++)
         m_texture_matrices[i] = m_bias * m_crop_matrices[i];
 }
+
+// -----------------------------------------------------------------------------------------------------------------------------------
 
 void CSM::update_far_bounds(dw::Camera* camera)
 {
@@ -188,30 +206,7 @@ void CSM::update_far_bounds(dw::Camera* camera)
     }
 }
 
-void CSM::bind_sdsm_uniforms(dw::Program* program, dw::Camera* camera, glm::vec3 dir)
-{
-	dir = glm::normalize(dir);
-	m_light_direction = dir;
-
-	glm::vec3 center = camera->m_position + camera->m_forward * 50.0f;
-	glm::vec3 light_pos = center - dir * ((camera->m_far - camera->m_near) / 2.0f);
-	glm::vec3 right = glm::cross(dir, glm::vec3(0.0f, 1.0f, 0.0f));
-
-	glm::vec3 up = m_stable_pssm ? camera->m_up : camera->m_right;
-
-	glm::mat4 modelview = glm::lookAt(light_pos, center, up);
-
-	m_light_view = modelview;
-
-	program->set_uniform("u_Lambda", m_lambda);
-	program->set_uniform("u_NearOffset", m_near_offset);
-	program->set_uniform("u_Bias", m_bias);
-	program->set_uniform("u_ModelView", m_light_view);
-	program->set_uniform("u_FOV", m_splits[0].fov);
-	program->set_uniform("u_Ratio", m_splits[0].ratio);
-	program->set_uniform("u_ShadowMapSize", m_shadow_map_size);
-	program->set_uniform("u_StablePSSM", (int)m_stable_pssm);
-}
+// -----------------------------------------------------------------------------------------------------------------------------------
 
 void CSM::update_crop_matrices(glm::mat4 t_modelview, dw::Camera* camera)
 {
@@ -337,3 +332,5 @@ void CSM::update_crop_matrices(glm::mat4 t_modelview, dw::Camera* camera)
 		}
 	}
 }
+
+// -----------------------------------------------------------------------------------------------------------------------------------

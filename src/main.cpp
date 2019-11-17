@@ -17,6 +17,7 @@
 #include <rtcore_scene.h>
 #include <xatlas.h>
 #include "skybox.h"
+#include "csm.h"
 
 #define CAMERA_FAR_PLANE 10000.0f
 #define LIGHTMAP_TEXTURE_SIZE 2048
@@ -32,6 +33,24 @@ struct GlobalUniforms
     glm::mat4 light_view_proj;
     DW_ALIGNED(16)
     glm::vec4 cam_pos;
+};
+
+struct FarBound
+{
+    DW_ALIGNED(16)
+    float far_bound;
+};
+
+struct CSMUniforms
+{
+    DW_ALIGNED(16)
+    glm::mat4 texture_matrices[8];
+    DW_ALIGNED(16)
+    glm::vec4 direction;
+    DW_ALIGNED(16)
+    int num_cascades;
+    DW_ALIGNED(16)
+    FarBound far_bounds[8];
 };
 
 struct LightmapVertex
@@ -74,9 +93,8 @@ protected:
         if (!load_scene())
             return false;
 
-		create_textures();
+        create_textures();
         create_lightmap_buffers();
-        create_framebuffers();
         initialize_lightmap();
 
         if (!load_cached_lightmap())
@@ -87,6 +105,8 @@ protected:
 
         // Create camera.
         create_camera();
+
+		initialize_csm();
 
         m_transform = glm::mat4(1.0f);
 
@@ -103,8 +123,12 @@ protected:
         // Update camera.
         update_camera();
 
+		m_csm.update(m_main_camera.get(), m_csm_uniforms.direction);
+
         update_global_uniforms(m_global_uniforms);
-        
+		update_csm_uniforms(m_csm_uniforms);
+
+		render_depth_scene();
         render_lit_scene();
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
@@ -259,7 +283,12 @@ private:
             ImGui::Checkbox("Hightlight Wireframe", &m_highlight_wireframe);
         }
 
-        ImGui::InputFloat3("Light Direction", &m_light_direction.x);
+		if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
+		{
+			m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
+			m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
+		}
+
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
         ImGui::InputInt("Num Bounces", &m_num_bounces);
@@ -272,21 +301,21 @@ private:
 
     void initialize_lightmap()
     {
-        std::unique_ptr<dw::Texture2D> pos_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        std::unique_ptr<dw::Texture2D> normal_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        std::unique_ptr<dw::Texture2D> pos_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> pos_texture            = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> normal_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> pos_dilated_texture    = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         std::unique_ptr<dw::Texture2D> normal_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
-		pos_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        pos_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         pos_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         normal_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         normal_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
-		std::unique_ptr<dw::Framebuffer> gbuffer_fbo = std::make_unique<dw::Framebuffer>();
-		std::unique_ptr<dw::Framebuffer> pos_dilated_fbo = std::make_unique<dw::Framebuffer>();
+        std::unique_ptr<dw::Framebuffer> gbuffer_fbo        = std::make_unique<dw::Framebuffer>();
+        std::unique_ptr<dw::Framebuffer> pos_dilated_fbo    = std::make_unique<dw::Framebuffer>();
         std::unique_ptr<dw::Framebuffer> normal_dilated_fbo = std::make_unique<dw::Framebuffer>();
 
-		dw::Texture* textures[] = { pos_texture.get(), normal_texture.get() };
+        dw::Texture* textures[] = { pos_texture.get(), normal_texture.get() };
         gbuffer_fbo->attach_multiple_render_targets(2, textures);
         pos_dilated_fbo->attach_render_target(0, pos_dilated_texture.get(), 0, 0);
         normal_dilated_fbo->attach_render_target(0, normal_dilated_texture.get(), 0, 0);
@@ -386,10 +415,26 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
+	void initialize_csm()
+    {
+        m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
+
+        m_csm.initialize(m_pssm_lambda, m_near_offset, m_cascade_count, m_shadow_map_size, m_main_camera.get(), m_width, m_height, m_csm_uniforms.direction);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
     void render_lit_scene()
     {
         render_scene(nullptr, m_mesh_program, 0, 0, m_width, m_height, GL_BACK);
     }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void render_depth_scene()
+	{
+		render_scene(nullptr, m_shadow_map_program, 0, 0, m_csm.shadow_map_size(), m_csm.shadow_map_size(), GL_FRONT);
+	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -399,12 +444,14 @@ private:
             // Create general shaders
             m_lightmap_fs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/lightmap_fs.glsl"));
             m_mesh_vs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
+            m_shadow_map_vs          = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/shadow_map_vs.glsl"));
             m_mesh_fs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
             m_triangle_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/fullscreen_triangle_vs.glsl"));
             m_lightmap_vs            = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/lightmap_vs.glsl"));
             m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
             m_dilate_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dilate_fs.glsl"));
+            m_depth_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/depth_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -444,6 +491,26 @@ private:
                 }
 
                 m_visualize_submeshes_program->uniform_block_binding("GlobalUniforms", 0);
+            }
+
+			{
+                if (!m_shadow_map_vs || !m_depth_fs)
+                {
+                    DW_LOG_FATAL("Failed to create Shaders");
+                    return false;
+                }
+
+                // Create general shader program
+                dw::Shader* shaders[]         = { m_shadow_map_vs.get(), m_depth_fs.get() };
+                m_shadow_map_program = std::make_unique<dw::Program>(2, shaders);
+
+                if (!m_shadow_map_program)
+                {
+                    DW_LOG_FATAL("Failed to create Shader Program");
+                    return false;
+                }
+
+                m_shadow_map_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
             {
@@ -500,6 +567,7 @@ private:
                 }
 
                 m_mesh_program->uniform_block_binding("GlobalUniforms", 0);
+                m_mesh_program->uniform_block_binding("CSMUniforms", 1);
             }
         }
 
@@ -510,8 +578,8 @@ private:
 
     void create_textures()
     {
-        m_lightmap_texture                = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_dilated_texture        = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -519,17 +587,11 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void create_framebuffers()
-	{
-		
-	}
-
-    // -----------------------------------------------------------------------------------------------------------------------------------
-
     bool create_uniform_buffer()
     {
         // Create uniform buffer for global data
         m_global_ubo = std::make_unique<dw::UniformBuffer>(GL_DYNAMIC_DRAW, sizeof(GlobalUniforms));
+        m_csm_ubo    = std::make_unique<dw::UniformBuffer>(GL_DYNAMIC_DRAW, sizeof(CSMUniforms));
 
         return true;
     }
@@ -1166,8 +1228,8 @@ private:
 
         m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
-		std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
-        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);		
+        std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
+        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
 
         dilate(m_lightmap_texture, m_lightmap_dilated_fbo.get());
 
@@ -1183,6 +1245,15 @@ private:
         void* ptr = m_global_ubo->map(GL_WRITE_ONLY);
         memcpy(ptr, &global, sizeof(GlobalUniforms));
         m_global_ubo->unmap();
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void update_csm_uniforms(const CSMUniforms& csm)
+    {
+        void* ptr = m_csm_ubo->map(GL_WRITE_ONLY);
+        memcpy(ptr, &csm, sizeof(CSMUniforms));
+        m_csm_ubo->unmap();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1236,21 +1307,25 @@ private:
     std::unique_ptr<dw::Shader> m_mesh_fs;
     std::unique_ptr<dw::Shader> m_visualize_lightmap_fs;
     std::unique_ptr<dw::Shader> m_visualize_submeshes_fs;
+    std::unique_ptr<dw::Shader> m_depth_fs;
 
     std::unique_ptr<dw::Shader> m_lightmap_vs;
     std::unique_ptr<dw::Shader> m_triangle_vs;
     std::unique_ptr<dw::Shader> m_mesh_vs;
+    std::unique_ptr<dw::Shader> m_shadow_map_vs;
 
     std::unique_ptr<dw::Program> m_lightmap_program;
     std::unique_ptr<dw::Program> m_dilate_program;
     std::unique_ptr<dw::Program> m_visualize_lightmap_program;
     std::unique_ptr<dw::Program> m_visualize_submeshes_program;
     std::unique_ptr<dw::Program> m_mesh_program;
+    std::unique_ptr<dw::Program> m_shadow_map_program;
 
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_dilated_texture;
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
+    std::unique_ptr<dw::UniformBuffer> m_csm_ubo;
 
     std::vector<glm::vec4> m_ray_positions;
     std::vector<glm::vec4> m_ray_directions;
@@ -1261,6 +1336,7 @@ private:
     std::unique_ptr<dw::Camera> m_main_camera;
 
     GlobalUniforms m_global_uniforms;
+    CSMUniforms    m_csm_uniforms;
 
     // Scene
     glm::mat4 m_transform;
@@ -1297,6 +1373,17 @@ private:
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
     Skybox    m_skybox;
+
+	// Cascaded Shadow Mapping.
+    CSM m_csm;
+
+	// Default shadow options.
+    int   m_depth_mips      = 0;
+    bool  m_ssdm            = false;
+    int   m_shadow_map_size = 2048;
+    int   m_cascade_count   = 4;
+    float m_pssm_lambda     = 0.3;
+    float m_near_offset     = 250.0f;
 
     // Camera orientation.
     float m_camera_x;
