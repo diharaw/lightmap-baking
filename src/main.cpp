@@ -9,7 +9,6 @@
 #include <random>
 #include <chrono>
 #include <random>
-#include <fstream>
 #include <rtccore.h>
 #include <rtcore_geometry.h>
 #include <rtcore_common.h>
@@ -67,11 +66,6 @@ protected:
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
-        create_textures();
-        create_lightmap_buffers();
-
-        bool cached_available = load_cached_lightmap();
-
         // Create GPU resources.
         if (!create_shaders())
             return false;
@@ -80,10 +74,12 @@ protected:
         if (!load_scene())
             return false;
 
+		create_textures();
+        create_lightmap_buffers();
         create_framebuffers();
         initialize_lightmap();
 
-        if (!cached_available)
+        if (!load_cached_lightmap())
             bake_lightmap();
 
         if (!create_uniform_buffer())
@@ -108,7 +104,7 @@ protected:
         update_camera();
 
         update_global_uniforms(m_global_uniforms);
-
+        
         render_lit_scene();
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
@@ -276,6 +272,25 @@ private:
 
     void initialize_lightmap()
     {
+        std::unique_ptr<dw::Texture2D> pos_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> normal_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> pos_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        std::unique_ptr<dw::Texture2D> normal_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+
+		pos_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        pos_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        normal_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        normal_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+
+		std::unique_ptr<dw::Framebuffer> gbuffer_fbo = std::make_unique<dw::Framebuffer>();
+		std::unique_ptr<dw::Framebuffer> pos_dilated_fbo = std::make_unique<dw::Framebuffer>();
+        std::unique_ptr<dw::Framebuffer> normal_dilated_fbo = std::make_unique<dw::Framebuffer>();
+
+		dw::Texture* textures[] = { pos_texture.get(), normal_texture.get() };
+        gbuffer_fbo->attach_multiple_render_targets(2, textures);
+        pos_dilated_fbo->attach_render_target(0, pos_dilated_texture.get(), 0, 0);
+        normal_dilated_fbo->attach_render_target(0, normal_dilated_texture.get(), 0, 0);
+
         if (m_enable_conservative_raster)
         {
             if (GLAD_GL_NV_conservative_raster)
@@ -289,7 +304,7 @@ private:
 
         glDisable(GL_CULL_FACE);
 
-        m_lightmap_gbuffer_fbo->bind();
+        gbuffer_fbo->bind();
 
         glViewport(0, 0, m_lightmap_size, m_lightmap_size);
 
@@ -322,26 +337,26 @@ private:
 
         // Dilate
 
-        dilate(m_lightmap_pos_texture, m_lightmap_pos_dilated_fbo);
-        dilate(m_lightmap_normal_texture, m_lightmap_normal_dilated_fbo);
+        dilate(pos_texture, pos_dilated_fbo.get());
+        dilate(normal_texture, normal_dilated_fbo.get());
 
         glFinish();
 
         // Copy bake sample points
         GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
-        GL_CHECK_ERROR(glBindTexture(m_lightmap_pos_dilated_texture->target(), m_lightmap_pos_dilated_texture->id()));
-        GL_CHECK_ERROR(glGetTexImage(m_lightmap_pos_dilated_texture->target(), 0, m_lightmap_pos_dilated_texture->format(), m_lightmap_pos_dilated_texture->type(), m_ray_positions.data()));
+        GL_CHECK_ERROR(glBindTexture(pos_dilated_texture->target(), pos_dilated_texture->id()));
+        GL_CHECK_ERROR(glGetTexImage(pos_dilated_texture->target(), 0, pos_dilated_texture->format(), pos_dilated_texture->type(), m_ray_positions.data()));
 
-        GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_dilated_texture->target(), m_lightmap_normal_dilated_texture->id()));
-        GL_CHECK_ERROR(glGetTexImage(m_lightmap_normal_dilated_texture->target(), 0, m_lightmap_normal_dilated_texture->format(), m_lightmap_normal_dilated_texture->type(), m_ray_directions.data()));
-        GL_CHECK_ERROR(glBindTexture(m_lightmap_normal_dilated_texture->target(), 0));
+        GL_CHECK_ERROR(glBindTexture(normal_dilated_texture->target(), normal_dilated_texture->id()));
+        GL_CHECK_ERROR(glGetTexImage(normal_dilated_texture->target(), 0, normal_dilated_texture->format(), normal_dilated_texture->type(), m_ray_directions.data()));
+        GL_CHECK_ERROR(glBindTexture(normal_dilated_texture->target(), 0));
 
         glFinish();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void dilate(std::unique_ptr<dw::Texture2D>& tex, std::unique_ptr<dw::Framebuffer>& fbo)
+    void dilate(std::unique_ptr<dw::Texture2D>& tex, dw::Framebuffer* fbo)
     {
         fbo->bind();
 
@@ -496,39 +511,18 @@ private:
     void create_textures()
     {
         m_lightmap_texture                = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_pos_texture            = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_pos_dilated_texture    = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_normal_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_normal_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_dilated_texture        = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_pos_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_pos_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_normal_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_normal_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void create_framebuffers()
-    {
-        m_lightmap_dilated_fbo        = std::make_unique<dw::Framebuffer>();
-        m_lightmap_gbuffer_fbo        = std::make_unique<dw::Framebuffer>();
-        m_lightmap_pos_dilated_fbo    = std::make_unique<dw::Framebuffer>();
-        m_lightmap_normal_dilated_fbo = std::make_unique<dw::Framebuffer>();
-
-        {
-            dw::Texture* textures[] = { m_lightmap_pos_texture.get(), m_lightmap_normal_texture.get() };
-
-            m_lightmap_gbuffer_fbo->attach_multiple_render_targets(2, textures);
-        }
-
-        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
-        m_lightmap_pos_dilated_fbo->attach_render_target(0, m_lightmap_pos_dilated_texture.get(), 0, 0);
-        m_lightmap_normal_dilated_fbo->attach_render_target(0, m_lightmap_normal_dilated_texture.get(), 0, 0);
-    }
+	void create_framebuffers()
+	{
+		
+	}
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -1091,19 +1085,17 @@ private:
 
     bool load_cached_lightmap()
     {
-        std::fstream f("lightmap.raw", std::ios::out | std::ios::binary);
+        FILE* lm = fopen("lightmap.raw", "r");
 
-        if (f.is_open())
+        if (lm)
         {
             size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
 
-            f.read((char*)m_framebuffer.data(), n);
-
-            std::cout << m_framebuffer[0].x << ", " << m_framebuffer[0].y << ", " << m_framebuffer[0].z << std::endl;
+            fread(m_framebuffer.data(), n, 1, lm);
 
             m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
 
-            f.close();
+            fclose(lm);
 
             return true;
         }
@@ -1122,6 +1114,7 @@ private:
         GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), m_lightmap_dilated_texture->id()));
         GL_CHECK_ERROR(glGetTexImage(m_lightmap_dilated_texture->target(), 0, m_lightmap_dilated_texture->format(), m_lightmap_dilated_texture->type(), m_framebuffer.data()));
+        GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), 0));
 
         fwrite(m_framebuffer.data(), n, 1, lm);
 
@@ -1173,7 +1166,10 @@ private:
 
         m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
-        dilate(m_lightmap_texture, m_lightmap_dilated_fbo);
+		std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
+        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);		
+
+        dilate(m_lightmap_texture, m_lightmap_dilated_fbo.get());
 
         glFinish();
 
@@ -1253,15 +1249,6 @@ private:
 
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_dilated_texture;
-    std::unique_ptr<dw::Texture2D> m_lightmap_pos_texture;
-    std::unique_ptr<dw::Texture2D> m_lightmap_normal_texture;
-    std::unique_ptr<dw::Texture2D> m_lightmap_pos_dilated_texture;
-    std::unique_ptr<dw::Texture2D> m_lightmap_normal_dilated_texture;
-
-    std::unique_ptr<dw::Framebuffer> m_lightmap_gbuffer_fbo;
-    std::unique_ptr<dw::Framebuffer> m_lightmap_pos_dilated_fbo;
-    std::unique_ptr<dw::Framebuffer> m_lightmap_normal_dilated_fbo;
-    std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo;
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
 

@@ -5,7 +5,7 @@ find_program(CLANG_FORMAT_EXE NAMES "clang-format" DOC "Path to clang-format exe
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-set(PRECOMPUTEGI_SOURCES ${PROJECT_SOURCE_DIR}/src/main.cpp)
+set(PRECOMPUTEDGI_SOURCES ${PROJECT_SOURCE_DIR}/src/main.cpp ${PROJECT_SOURCE_DIR}/src/skybox.h ${PROJECT_SOURCE_DIR}/src/skybox.cpp)
 
 set(XATLAS_SOURCES ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.cpp
                    ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.h)
@@ -15,25 +15,25 @@ set(HOSEKSKY_SOURCES ${PROJECT_SOURCE_DIR}/external/HosekSky/ArHosekSkyModel.cpp
 file(GLOB_RECURSE SHADER_SOURCES ${PROJECT_SOURCE_DIR}/src/*.glsl)
 
 if(APPLE)
-    add_executable(PrecomputeGI MACOSX_BUNDLE ${PRECOMPUTEGI_SOURCES} ${XATLAS_SOURCES} ${HOSEKSKY_SOURCES} ${SHADER_SOURCES} ${ASSET_SOURCES})
-    set(MACOSX_BUNDLE_BUNDLE_NAME "PrecomputeGI") 
+    add_executable(PrecomputedGI MACOSX_BUNDLE ${PRECOMPUTEDGI_SOURCES} ${XATLAS_SOURCES} ${HOSEKSKY_SOURCES} ${SHADER_SOURCES} ${ASSET_SOURCES})
+    set(MACOSX_BUNDLE_BUNDLE_NAME "PrecomputedGI") 
     set_source_files_properties(${SHADER_SOURCES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/shader)
     set_source_files_properties(${ASSET_SOURCES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 else()
-    add_executable(PrecomputeGI ${PRECOMPUTEGI_SOURCES} ${XATLAS_SOURCES} ${HOSEKSKY_SOURCES}) 
+    add_executable(PrecomputedGI ${PRECOMPUTEDGI_SOURCES} ${XATLAS_SOURCES} ${HOSEKSKY_SOURCES}) 
 endif()
 
-target_link_libraries(PrecomputeGI dwSampleFramework)
-target_link_libraries(PrecomputeGI embree)
+target_link_libraries(PrecomputedGI dwSampleFramework)
+target_link_libraries(PrecomputedGI embree)
 
 if (NOT APPLE)
-    add_custom_command(TARGET PrecomputeGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/shader $<TARGET_FILE_DIR:PrecomputeGI>/shader)
-    add_custom_command(TARGET PrecomputeGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/mesh $<TARGET_FILE_DIR:PrecomputeGI>/mesh)
-    add_custom_command(TARGET PrecomputeGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/texture $<TARGET_FILE_DIR:PrecomputeGI>/texture)
+    add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/shader $<TARGET_FILE_DIR:PrecomputedGI>/shader)
+    add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/mesh $<TARGET_FILE_DIR:PrecomputedGI>/mesh)
+    add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/texture $<TARGET_FILE_DIR:PrecomputedGI>/texture)
 endif()
 
 if(CLANG_FORMAT_EXE)
-    add_custom_target(PrecomputeGI-clang-format COMMAND ${CLANG_FORMAT_EXE} -i -style=file ${PRECOMPUTEGI_SOURCES} ${SHADER_SOURCES})
+    add_custom_target(PrecomputedGI-clang-format COMMAND ${CLANG_FORMAT_EXE} -i -style=file ${PRECOMPUTEDGI_SOURCES} ${SHADER_SOURCES})
 endif()
 
-set_property(TARGET PrecomputeGI PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$(Configuration)")
+set_property(TARGET PrecomputedGI PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$(Configuration)")
