@@ -20,10 +20,10 @@
 #include "csm.h"
 
 #define CAMERA_FAR_PLANE 10000.0f
-#define LIGHTMAP_TEXTURE_SIZE 2048
+#define LIGHTMAP_TEXTURE_SIZE 256
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
-#define LIGHTMAP_BOUNCES 6
+#define LIGHTMAP_BOUNCES 2
 
 struct GlobalUniforms
 {
@@ -53,6 +53,17 @@ struct CSMUniforms
     FarBound far_bounds[8];
 };
 
+struct LightmapSubMesh
+{
+    uint32_t  index_count;
+    uint32_t  base_vertex;
+    uint32_t  base_index;
+    glm::vec3 max_extents;
+    glm::vec3 min_extents;
+    glm::vec3 color;
+};
+
+
 struct LightmapVertex
 {
     glm::vec3 position;
@@ -65,14 +76,15 @@ struct LightmapVertex
 
 struct LightmapMesh
 {
-    std::vector<dw::SubMesh>          submeshes;
+    std::vector<LightmapSubMesh>      submeshes;
     std::vector<glm::vec3>            submesh_colors;
+    std::vector<glm::vec3>            vertex_colors;
     std::unique_ptr<dw::VertexBuffer> vbo;
     std::unique_ptr<dw::IndexBuffer>  ibo;
     std::unique_ptr<dw::VertexArray>  vao;
 };
 
-class Lightmaps : public dw::Application
+class PrecomputedGI : public dw::Application
 {
 protected:
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -81,7 +93,7 @@ protected:
     {
         m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
 
-        glm::vec3 default_light_dir = glm::vec3(-0.7500f, 0.9770f, -0.4000f);
+        glm::vec3 default_light_dir = glm::vec3(0.0f, 0.9770f, -0.4000f);
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
@@ -97,6 +109,9 @@ protected:
         create_lightmap_buffers();
         initialize_lightmap();
 
+        if (!m_skybox.initialize(default_light_dir, glm::vec3(0.5f), 2.0f))
+            return false;
+
         if (!load_cached_lightmap())
             bake_lightmap();
 
@@ -106,11 +121,12 @@ protected:
         // Create camera.
         create_camera();
 
-		initialize_csm();
+        initialize_csm();
 
         m_transform = glm::mat4(1.0f);
+        m_transform = glm::scale(m_transform, glm::vec3(10.0f));
 
-        return m_skybox.initialize(default_light_dir, glm::vec3(0.5f), 2.0f);
+        return true;
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -123,12 +139,12 @@ protected:
         // Update camera.
         update_camera();
 
-		m_csm.update(m_main_camera.get(), m_csm_uniforms.direction);
+        m_csm.update(m_main_camera.get(), m_csm_uniforms.direction);
 
         update_global_uniforms(m_global_uniforms);
-		update_csm_uniforms(m_csm_uniforms);
+        update_csm_uniforms(m_csm_uniforms);
 
-		render_depth_scene();
+        render_depth_scene();
         render_lit_scene();
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
@@ -245,7 +261,7 @@ protected:
         settings.major_ver    = 4;
         settings.width        = 1920;
         settings.height       = 1080;
-        settings.title        = "Lightmaps (c) 2019 Dihara Wijetunga";
+        settings.title        = "PrecomputedGI (c) 2019 Dihara Wijetunga";
 
         return settings;
     }
@@ -276,6 +292,7 @@ private:
 
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
         ImGui::Checkbox("Dilated", &m_dilated);
+        ImGui::Checkbox("Shadow Color", &m_show_albedo);
 
         if (m_visualize_atlas)
         {
@@ -283,11 +300,11 @@ private:
             ImGui::Checkbox("Hightlight Wireframe", &m_highlight_wireframe);
         }
 
-		if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
-		{
-			m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
-			m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
-		}
+        if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
+        {
+            m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
+            m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
+        }
 
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
@@ -348,7 +365,7 @@ private:
 
         for (uint32_t i = 0; i < m_unwrapped_mesh.submeshes.size(); i++)
         {
-            dw::SubMesh& submesh = m_unwrapped_mesh.submeshes[i];
+            LightmapSubMesh& submesh = m_unwrapped_mesh.submeshes[i];
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -365,7 +382,6 @@ private:
         glFinish();
 
         // Dilate
-
         dilate(pos_texture, pos_dilated_fbo.get());
         dilate(normal_texture, normal_dilated_fbo.get());
 
@@ -415,7 +431,7 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void initialize_csm()
+    void initialize_csm()
     {
         m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
 
@@ -431,10 +447,39 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void render_depth_scene()
-	{
-		render_scene(nullptr, m_shadow_map_program, 0, 0, m_csm.shadow_map_size(), m_csm.shadow_map_size(), GL_FRONT);
-	}
+    void render_depth_scene()
+    {
+        for (int i = 0; i < m_csm.m_split_count; i++)
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_FRONT);
+
+            m_csm.framebuffers()[i]->bind();
+
+            glViewport(0, 0, m_csm.shadow_map_size(), m_csm.shadow_map_size());
+
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClearDepth(1.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Bind shader program.
+            m_shadow_map_program->use();
+
+            // Bind uniform buffers.
+            m_global_ubo->bind_base(0);
+            m_csm_ubo->bind_base(1);
+
+            m_shadow_map_program->set_uniform("u_CascadeIndex", i);
+
+            // Draw scene.
+            render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
+        }
+
+        render_scene(nullptr, m_shadow_map_program, 0, 0, m_csm.shadow_map_size(), m_csm.shadow_map_size(), GL_FRONT);
+    }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -451,7 +496,7 @@ private:
             m_visualize_lightmap_fs  = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_lightmap_fs.glsl"));
             m_visualize_submeshes_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/visualize_submeshes_fs.glsl"));
             m_dilate_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/dilate_fs.glsl"));
-            m_depth_fs              = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/depth_fs.glsl"));
+            m_depth_fs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/depth_fs.glsl"));
 
             {
                 if (!m_lightmap_vs || !m_lightmap_fs)
@@ -493,7 +538,7 @@ private:
                 m_visualize_submeshes_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
-			{
+            {
                 if (!m_shadow_map_vs || !m_depth_fs)
                 {
                     DW_LOG_FATAL("Failed to create Shaders");
@@ -501,8 +546,8 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[]         = { m_shadow_map_vs.get(), m_depth_fs.get() };
-                m_shadow_map_program = std::make_unique<dw::Program>(2, shaders);
+                dw::Shader* shaders[] = { m_shadow_map_vs.get(), m_depth_fs.get() };
+                m_shadow_map_program  = std::make_unique<dw::Program>(2, shaders);
 
                 if (!m_shadow_map_program)
                 {
@@ -600,7 +645,7 @@ private:
 
     bool load_scene()
     {
-        dw::Mesh* mesh = dw::Mesh::load("mesh/sponza.obj");
+        dw::Mesh* mesh = dw::Mesh::load("mesh/cornell_box.obj");
 
         if (!mesh)
         {
@@ -630,7 +675,16 @@ private:
 
         for (int i = 0; i < mesh->sub_mesh_count(); i++)
         {
-            m_unwrapped_mesh.submeshes.push_back(mesh->sub_meshes()[i]);
+            LightmapSubMesh sub;
+
+			sub.color = mesh->sub_meshes()[i].mat->albedo_value();
+			sub.index_count = mesh->sub_meshes()[i].index_count;
+            sub.base_vertex = mesh->sub_meshes()[i].base_vertex;
+            sub.base_index  = mesh->sub_meshes()[i].base_index;
+            sub.max_extents = mesh->sub_meshes()[i].max_extents;
+            sub.min_extents = mesh->sub_meshes()[i].min_extents;
+
+            m_unwrapped_mesh.submeshes.push_back(sub);
             m_unwrapped_mesh.submesh_colors.push_back(glm::vec3(drand48(), drand48(), drand48()));
         }
 
@@ -639,7 +693,7 @@ private:
 
         for (int mesh_idx = 0; mesh_idx < atlas->meshCount; mesh_idx++)
         {
-            dw::SubMesh& sub = m_unwrapped_mesh.submeshes[mesh_idx];
+            dw::SubMesh& sub = mesh->sub_meshes()[mesh_idx];
 
             sub.base_index  = index_count;
             sub.base_vertex = vertex_count;
@@ -658,6 +712,7 @@ private:
                 v.lightmap_uv = glm::vec2(atlas->meshes[mesh_idx].vertexArray[i].uv[0] / (atlas->width - 1), atlas->meshes[mesh_idx].vertexArray[i].uv[1] / (atlas->height - 1));
 
                 vertices.push_back(v);
+                m_unwrapped_mesh.vertex_colors.push_back(sub.mat->albedo_value());
             }
 
             for (int i = 0; i < atlas->meshes[mesh_idx].indexCount; i++)
@@ -821,7 +876,7 @@ private:
 
         for (uint32_t i = 0; i < mesh.submeshes.size(); i++)
         {
-            dw::SubMesh& submesh = mesh.submeshes[i];
+            LightmapSubMesh& submesh = mesh.submeshes[i];
 
             if (program->set_uniform("s_Lightmap", 0))
             {
@@ -830,6 +885,9 @@ private:
                 else
                     m_lightmap_texture->bind(0);
             }
+
+			program->set_uniform("u_ShowColor", (int)m_show_albedo);
+			program->set_uniform("u_Color", submesh.color);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -867,6 +925,9 @@ private:
 
         // Bind shader program.
         program->use();
+
+        if (program->set_uniform("s_ShadowMap", 1))
+            m_csm.shadow_map()->bind(1);
 
         // Bind uniform buffers.
         m_global_ubo->bind_base(0);
@@ -921,7 +982,7 @@ private:
 
         for (uint32_t i = 0; i < m_unwrapped_mesh.submeshes.size(); i++)
         {
-            dw::SubMesh& submesh = m_unwrapped_mesh.submeshes[i];
+            LightmapSubMesh& submesh = m_unwrapped_mesh.submeshes[i];
 
             m_visualize_submeshes_program->set_uniform("u_Color", m_unwrapped_mesh.submesh_colors[i]);
 
@@ -1056,10 +1117,9 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    glm::vec3 evaluate_direct_lighting(RTCIntersectContext& context, glm::vec3 p, glm::vec3 n)
+    glm::vec3 evaluate_direct_lighting(RTCIntersectContext& context, glm::vec3 p, glm::vec3 n, glm::vec3 albedo)
     {
         const glm::vec3 l      = -m_light_direction;
-        const glm::vec3 albedo = glm::vec3(0.7f);
         const glm::vec3 li     = m_light_color;
 
         RTCRay rayhit;
@@ -1091,8 +1151,6 @@ private:
     glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position, bool& gutter)
     {
         glm::vec3       color;
-        const glm::vec3 albedo = glm::vec3(0.7f);
-
         RTCRayHit rayhit;
 
         glm::vec3 p = position;
@@ -1119,8 +1177,12 @@ private:
             if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
             {
                 float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-                return m_skybox.sample_sky(d) * sky_dir;
+                return color + m_skybox.sample_sky(d) * sky_dir * attenuation;
             }
+
+			uint32_t v_idx = rayhit.hit.primID;
+
+			const glm::vec3 albedo = m_unwrapped_mesh.vertex_colors[v_idx];
 
             p = p + d * rayhit.ray.tfar;
             n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
@@ -1135,7 +1197,7 @@ private:
             // Add bias to position
             p += glm::sign(n) * abs(p * 0.0000002f);
 
-            color += evaluate_direct_lighting(intersect_context, p, n) * attenuation;
+            color += evaluate_direct_lighting(intersect_context, p, n, albedo) * attenuation;
 
             attenuation *= albedo;
         }
@@ -1191,7 +1253,7 @@ private:
 
         float w = 1.0f / float(m_num_samples);
 
-#pragma omp parallel for
+		#pragma omp parallel for
         for (int y = 0; y < m_lightmap_size; y++)
         {
             for (int x = 0; x < m_lightmap_size; x++)
@@ -1249,7 +1311,7 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void update_csm_uniforms(const CSMUniforms& csm)
+    void update_csm_uniforms(const CSMUniforms& csm)
     {
         void* ptr = m_csm_ubo->map(GL_WRITE_ONLY);
         memcpy(ptr, &csm, sizeof(CSMUniforms));
@@ -1366,6 +1428,7 @@ private:
     bool m_highlight_submeshes        = false;
     bool m_highlight_wireframe        = false;
     bool m_dilated                    = true;
+    bool m_show_albedo                = true;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
@@ -1374,10 +1437,10 @@ private:
     glm::vec3 m_light_color;
     Skybox    m_skybox;
 
-	// Cascaded Shadow Mapping.
+    // Cascaded Shadow Mapping.
     CSM m_csm;
 
-	// Default shadow options.
+    // Default shadow options.
     int   m_depth_mips      = 0;
     bool  m_ssdm            = false;
     int   m_shadow_map_size = 2048;
@@ -1390,4 +1453,4 @@ private:
     float m_camera_y;
 };
 
-DW_DECLARE_MAIN(Lightmaps)
+DW_DECLARE_MAIN(PrecomputedGI)

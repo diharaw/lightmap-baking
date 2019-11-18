@@ -26,6 +26,8 @@ layout(std140, binding = 1) buffer CSMUniforms
     float far_bounds[8];
 };
 
+uniform int u_ShowColor;
+uniform vec3 u_Color;
 uniform sampler2D s_Lightmap;
 uniform sampler2DArray s_ShadowMap;
 
@@ -69,9 +71,6 @@ float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
 	}
 
 	blend = clamp( (frag_depth - far_bounds[index] * 0.995) * 200.0, 0.0, 1.0);
-    
-    // Apply blend options.
-    blend *= options.z;
 
 	// Transform frag position into Light-space.
 	vec4 light_space_pos = texture_matrices[index] * vec4(FS_IN_WorldPos, 1.0f);
@@ -92,7 +91,7 @@ float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
 	    }    
 	}
 
-	shadow /= 9.0
+	shadow /= 9.0;
 
     return shadow;    
 }
@@ -111,7 +110,12 @@ void main()
 
     vec3 color   = exposed_color(texture(s_Lightmap, FS_IN_LightmapUV).rgb);
 
-    FS_OUT_Color = shadow * vec3(1.0) + linear_to_srgb(color);
+	vec3 final_color = shadow * vec3(1.0) + linear_to_srgb(color);
+
+	if (u_ShowColor == 1)
+		final_color += u_Color;
+
+    FS_OUT_Color = final_color;
 }
 
 // ------------------------------------------------------------------
