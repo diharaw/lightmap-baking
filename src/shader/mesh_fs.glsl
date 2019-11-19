@@ -20,9 +20,9 @@ in vec4 FS_IN_NDCFragPos;
 
 layout(std140, binding = 1) buffer CSMUniforms
 {
-	mat4 texture_matrices[8];
-    vec4 direction;
-    int num_cascades;
+    mat4  texture_matrices[8];
+    vec4  direction;
+    int   num_cascades;
     float far_bounds[8];
 };
 
@@ -60,40 +60,40 @@ vec3 exposed_color(vec3 color)
 
 float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
 {
-	int index = 0;
+    int   index = 0;
     float blend = 0.0;
-    
-	// Find shadow cascade.
-	for (int i = 0; i < num_cascades - 1; i++)
-	{
-		if (frag_depth > far_bounds[i])
-			index = i + 1;
-	}
 
-	blend = clamp( (frag_depth - far_bounds[index] * 0.995) * 200.0, 0.0, 1.0);
+    // Find shadow cascade.
+    for (int i = 0; i < num_cascades - 1; i++)
+    {
+        if (frag_depth > far_bounds[i])
+            index = i + 1;
+    }
 
-	// Transform frag position into Light-space.
-	vec4 light_space_pos = texture_matrices[index] * vec4(FS_IN_WorldPos, 1.0f);
+    blend = clamp((frag_depth - far_bounds[index] * 0.995) * 200.0, 0.0, 1.0);
 
-	float current_depth = light_space_pos.z;
-    
-	float bias = max(0.0005 * (1.0 - dot(n, l)), 0.0005);  
+    // Transform frag position into Light-space.
+    vec4 light_space_pos = texture_matrices[index] * vec4(FS_IN_WorldPos, 1.0f);
 
-	float shadow = 0.0;
-	vec2 texelSize = 1.0 / textureSize(s_ShadowMap, 0).xy;
+    float current_depth = light_space_pos.z;
 
-	for(int x = -1; x <= 1; ++x)
-	{
-	    for(int y = -1; y <= 1; ++y)
-	    {
-	        float pcfDepth = texture(s_ShadowMap, vec3(light_space_pos.xy + vec2(x, y) * texelSize, float(index))).r; 
-	        shadow += current_depth - bias > pcfDepth ? 1.0 : 0.0;        
-	    }    
-	}
+    float bias = max(0.0005 * (1.0 - dot(n, l)), 0.0005);
 
-	shadow /= 9.0;
+    float shadow    = 0.0;
+    vec2  texelSize = 1.0 / textureSize(s_ShadowMap, 0).xy;
 
-    return shadow;    
+    for (int x = -1; x <= 1; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth = texture(s_ShadowMap, vec3(light_space_pos.xy + vec2(x, y) * texelSize, float(index))).r;
+            shadow += current_depth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+
+    shadow /= 9.0;
+
+    return shadow;
 }
 
 // ------------------------------------------------------------------
@@ -103,17 +103,17 @@ float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
 void main()
 {
     vec3 n = normalize(FS_IN_Normal);
-	vec3 l = -direction.xyz;
+    vec3 l = -direction.xyz;
 
-	float frag_depth = (FS_IN_NDCFragPos.z / FS_IN_NDCFragPos.w) * 0.5 + 0.5;
-	float shadow = shadow_occlussion(frag_depth, n, l);
+    float frag_depth = (FS_IN_NDCFragPos.z / FS_IN_NDCFragPos.w) * 0.5 + 0.5;
+    float shadow     = shadow_occlussion(frag_depth, n, l);
 
-    vec3 color   = exposed_color(texture(s_Lightmap, FS_IN_LightmapUV).rgb);
+    vec3 color = exposed_color(texture(s_Lightmap, FS_IN_LightmapUV).rgb);
 
-	vec3 final_color = shadow * vec3(1.0) + linear_to_srgb(color);
+    vec3 final_color = shadow * vec3(1.0) + linear_to_srgb(color);
 
-	if (u_ShowColor == 1)
-		final_color += u_Color;
+    if (u_ShowColor == 1)
+        final_color += u_Color;
 
     FS_OUT_Color = final_color;
 }

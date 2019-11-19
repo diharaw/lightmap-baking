@@ -22,7 +22,7 @@ layout(std430, binding = 0) buffer GlobalUniforms
 };
 
 uniform mat4 u_Model;
-uniform int u_CascadeIndex;
+uniform int  u_CascadeIndex;
 
 // ------------------------------------------------------------------
 // MAIN -------------------------------------------------------------

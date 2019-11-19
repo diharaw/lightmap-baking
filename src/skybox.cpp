@@ -32,24 +32,24 @@ static glm::vec3 map_xys_to_direction(uint64_t x, uint64_t y, uint64_t s, uint64
     // +x, -x, +y, -y, +z, -z
     switch (s)
     {
-		case 0:
-		    dir = glm::normalize(glm::vec3(1.0f, v, -u));
-		    break;
-		case 1:
-		    dir = glm::normalize(glm::vec3(-1.0f, v, u));
-		    break;
-		case 2:
-		    dir = glm::normalize(glm::vec3(u, 1.0f, -v));
-		    break;
-		case 3:
-		    dir = glm::normalize(glm::vec3(u, -1.0f, v));
-		    break;
-		case 4:
-		    dir = glm::normalize(glm::vec3(u, v, 1.0f));
-		    break;
-		case 5:
-		    dir = glm::normalize(glm::vec3(-u, v, -1.0f));
-		    break;
+        case 0:
+            dir = glm::normalize(glm::vec3(1.0f, v, -u));
+            break;
+        case 1:
+            dir = glm::normalize(glm::vec3(-1.0f, v, u));
+            break;
+        case 2:
+            dir = glm::normalize(glm::vec3(u, 1.0f, -v));
+            break;
+        case 3:
+            dir = glm::normalize(glm::vec3(u, -1.0f, v));
+            break;
+        case 4:
+            dir = glm::normalize(glm::vec3(u, v, 1.0f));
+            break;
+        case 5:
+            dir = glm::normalize(glm::vec3(-u, v, -1.0f));
+            break;
     }
 
     return dir;
@@ -75,31 +75,31 @@ bool Skybox::initialize(glm::vec3 sun_dir, glm::vec3 ground_albedo, float turbid
     m_skybox_texture->set_mag_filter(GL_NEAREST);
     m_skybox_texture->set_min_filter(GL_NEAREST);
 
-	m_skybox_data.resize(6);
+    m_skybox_data.resize(6);
 
-	for (int i = 0; i < 6; i++)
-		m_skybox_data[i].resize(SKYBOX_TEXTURE_SIZE * SKYBOX_TEXTURE_SIZE);
+    for (int i = 0; i < 6; i++)
+        m_skybox_data[i].resize(SKYBOX_TEXTURE_SIZE * SKYBOX_TEXTURE_SIZE);
 
-	set_sun_dir(sun_dir);
+    set_sun_dir(sun_dir);
 
-	m_skybox_vs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/skybox_vs.glsl"));
+    m_skybox_vs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/skybox_vs.glsl"));
     m_skybox_fs = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/skybox_fs.glsl"));
 
-	if (!m_skybox_vs || !m_skybox_fs)
-     {
-         DW_LOG_FATAL("Failed to create Shaders");
-         return false;
-     }
+    if (!m_skybox_vs || !m_skybox_fs)
+    {
+        DW_LOG_FATAL("Failed to create Shaders");
+        return false;
+    }
 
-     // Create general shader program
-     dw::Shader* shaders[] = { m_skybox_vs.get(), m_skybox_fs.get() };
-     m_skybox_program    = std::make_unique<dw::Program>(2, shaders);
+    // Create general shader program
+    dw::Shader* shaders[] = { m_skybox_vs.get(), m_skybox_fs.get() };
+    m_skybox_program      = std::make_unique<dw::Program>(2, shaders);
 
-     if (!m_skybox_program)
-     {
-         DW_LOG_FATAL("Failed to create Shader Program");
-         return false;
-     }
+    if (!m_skybox_program)
+    {
+        DW_LOG_FATAL("Failed to create Shader Program");
+        return false;
+    }
 
     return true;
 }
@@ -112,7 +112,7 @@ void Skybox::set_sun_dir(glm::vec3 sun_dir)
     DW_SAFE_DELETE(m_state_g);
     DW_SAFE_DELETE(m_state_b);
 
-	sun_dir.y       = glm::clamp(sun_dir.y, 0.0f, 1.0f);
+    sun_dir.y       = glm::clamp(sun_dir.y, 0.0f, 1.0f);
     sun_dir         = glm::normalize(sun_dir);
     float thetaS    = angle_between(sun_dir, glm::vec3(0.0f, 1.0f, 0.0f));
     float elevation = Pi_2 - thetaS;
@@ -123,21 +123,21 @@ void Skybox::set_sun_dir(glm::vec3 sun_dir)
     m_state_g = arhosek_rgb_skymodelstate_alloc_init(m_turbidity, m_ground_albedo.y, m_elevation);
     m_state_b = arhosek_rgb_skymodelstate_alloc_init(m_turbidity, m_ground_albedo.z, m_elevation);
 
-	for (int s = 0; s < 6; s++)
-	{
-		for (int y = 0; y < SKYBOX_TEXTURE_SIZE; y++)
-		{
-		    for (int x = 0; x < SKYBOX_TEXTURE_SIZE; x++)
-		    {
-                glm::vec3 dir      = map_xys_to_direction(x, y, s, SKYBOX_TEXTURE_SIZE, SKYBOX_TEXTURE_SIZE);
-                glm::vec3 radiance = sample_sky(dir);
-		        uint64_t idx       = (y * SKYBOX_TEXTURE_SIZE) + x;
+    for (int s = 0; s < 6; s++)
+    {
+        for (int y = 0; y < SKYBOX_TEXTURE_SIZE; y++)
+        {
+            for (int x = 0; x < SKYBOX_TEXTURE_SIZE; x++)
+            {
+                glm::vec3 dir         = map_xys_to_direction(x, y, s, SKYBOX_TEXTURE_SIZE, SKYBOX_TEXTURE_SIZE);
+                glm::vec3 radiance    = sample_sky(dir);
+                uint64_t  idx         = (y * SKYBOX_TEXTURE_SIZE) + x;
                 m_skybox_data[s][idx] = (glm::vec4(radiance, 1.0f));
-		    }
-		}
+            }
+        }
 
-		m_skybox_texture->set_data(s, 0, 0, m_skybox_data[s].data());
-	}
+        m_skybox_texture->set_data(s, 0, 0, m_skybox_data[s].data());
+    }
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------
@@ -149,18 +149,18 @@ void Skybox::render(std::unique_ptr<dw::Framebuffer> fbo, int w, int h, glm::mat
     glDisable(GL_CULL_FACE);
 
     if (fbo)
-		fbo->bind();
+        fbo->bind();
     else
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glViewport(0, 0, w, h);
 
     // Bind shader program.
     m_skybox_program->use();
 
-	glm::mat4 inverse_vp = glm::inverse(proj * glm::mat4(glm::mat3(view)));
+    glm::mat4 inverse_vp = glm::inverse(proj * glm::mat4(glm::mat3(view)));
 
-	m_skybox_program->set_uniform("u_CubemapInverseVP", inverse_vp);
+    m_skybox_program->set_uniform("u_CubemapInverseVP", inverse_vp);
 
     if (m_skybox_program->set_uniform("s_Skybox", 0))
         m_skybox_texture->bind(0);
@@ -168,7 +168,7 @@ void Skybox::render(std::unique_ptr<dw::Framebuffer> fbo, int w, int h, glm::mat
     // Render fullscreen triangle
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-	glDepthFunc(GL_LESS);
+    glDepthFunc(GL_LESS);
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------

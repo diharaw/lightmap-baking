@@ -63,7 +63,6 @@ struct LightmapSubMesh
     glm::vec3 color;
 };
 
-
 struct LightmapVertex
 {
     glm::vec3 position;
@@ -677,8 +676,8 @@ private:
         {
             LightmapSubMesh sub;
 
-			sub.color = mesh->sub_meshes()[i].mat->albedo_value();
-			sub.index_count = mesh->sub_meshes()[i].index_count;
+            sub.color       = mesh->sub_meshes()[i].mat->albedo_value();
+            sub.index_count = mesh->sub_meshes()[i].index_count;
             sub.base_vertex = mesh->sub_meshes()[i].base_vertex;
             sub.base_index  = mesh->sub_meshes()[i].base_index;
             sub.max_extents = mesh->sub_meshes()[i].max_extents;
@@ -827,27 +826,27 @@ private:
 
         std::vector<glm::vec3> vertices(mesh->vertex_count());
 
-		m_unwrapped_mesh.vertex_colors.resize(mesh->index_count() / 3);
+        m_unwrapped_mesh.vertex_colors.resize(mesh->index_count() / 3);
 
-        std::vector<uint32_t>  indices(mesh->index_count());
-        uint32_t               idx        = 0;
-        dw::Vertex*            vertex_ptr = mesh->vertices();
-        uint32_t*              index_ptr  = mesh->indices();
+        std::vector<uint32_t> indices(mesh->index_count());
+        uint32_t              idx        = 0;
+        dw::Vertex*           vertex_ptr = mesh->vertices();
+        uint32_t*             index_ptr  = mesh->indices();
 
         for (int i = 0; i < mesh->vertex_count(); i++)
             vertices[i] = vertex_ptr[i].position;
 
-		uint32_t tri_idx = 0;
+        uint32_t tri_idx = 0;
 
         for (int i = 0; i < mesh->sub_mesh_count(); i++)
         {
             dw::SubMesh& submesh = mesh->sub_meshes()[i];
 
-			for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
-				indices[idx++] = submesh.base_vertex + index_ptr[j];
-	
-			for (int j = 0; j < (submesh.index_count/3); j++)
-				m_unwrapped_mesh.vertex_colors[tri_idx++] = submesh.mat->albedo_value();
+            for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
+                indices[idx++] = submesh.base_vertex + index_ptr[j];
+
+            for (int j = 0; j < (submesh.index_count / 3); j++)
+                m_unwrapped_mesh.vertex_colors[tri_idx++] = submesh.mat->albedo_value();
         }
 
         void* data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(glm::vec3), mesh->vertex_count());
@@ -893,8 +892,8 @@ private:
                     m_lightmap_texture->bind(0);
             }
 
-			program->set_uniform("u_ShowColor", (int)m_show_albedo);
-			program->set_uniform("u_Color", submesh.color);
+            program->set_uniform("u_ShowColor", (int)m_show_albedo);
+            program->set_uniform("u_Color", submesh.color);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -1126,8 +1125,8 @@ private:
 
     glm::vec3 evaluate_direct_lighting(RTCIntersectContext& context, glm::vec3 p, glm::vec3 n, glm::vec3 albedo)
     {
-        const glm::vec3 l      = -m_light_direction;
-        const glm::vec3 li     = m_light_color;
+        const glm::vec3 l  = -m_light_direction;
+        const glm::vec3 li = m_light_color;
 
         RTCRay rayhit;
 
@@ -1157,7 +1156,7 @@ private:
 
     glm::vec3 path_trace(glm::vec3 direction, glm::vec3 position, bool& gutter)
     {
-        glm::vec3       color;
+        glm::vec3 color;
         RTCRayHit rayhit;
 
         glm::vec3 p = position;
@@ -1184,12 +1183,12 @@ private:
             if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
             {
                 float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-                return color;// + m_skybox.sample_sky(d) * sky_dir * attenuation;
+                return color; // + m_skybox.sample_sky(d) * sky_dir * attenuation;
             }
 
-			uint32_t v_idx = rayhit.hit.primID;
+            uint32_t v_idx = rayhit.hit.primID;
 
-			const glm::vec3 albedo = m_unwrapped_mesh.vertex_colors[v_idx];
+            const glm::vec3 albedo = m_unwrapped_mesh.vertex_colors[v_idx];
 
             p = p + d * rayhit.ray.tfar;
             n = glm::normalize(glm::vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
@@ -1260,7 +1259,7 @@ private:
 
         float w = 1.0f / float(m_num_samples);
 
-		#pragma omp parallel for
+#pragma omp parallel for
         for (int y = 0; y < m_lightmap_size; y++)
         {
             for (int x = 0; x < m_lightmap_size; x++)
