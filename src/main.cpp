@@ -93,7 +93,7 @@ protected:
     {
         m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
 
-        glm::vec3 default_light_dir = glm::vec3(0.0f, 0.9770f, -0.4000f);
+        glm::vec3 default_light_dir = glm::normalize(glm::vec3(0.0f, 0.9770f, 0.5000f));
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
@@ -292,7 +292,7 @@ private:
 
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
         ImGui::Checkbox("Dilated", &m_dilated);
-        ImGui::Checkbox("Shadow Color", &m_show_albedo);
+        ImGui::Checkbox("Show Color", &m_show_albedo);
 
         if (m_visualize_atlas)
         {
@@ -712,7 +712,6 @@ private:
                 v.lightmap_uv = glm::vec2(atlas->meshes[mesh_idx].vertexArray[i].uv[0] / (atlas->width - 1), atlas->meshes[mesh_idx].vertexArray[i].uv[1] / (atlas->height - 1));
 
                 vertices.push_back(v);
-                m_unwrapped_mesh.vertex_colors.push_back(sub.mat->albedo_value());
             }
 
             for (int i = 0; i < atlas->meshes[mesh_idx].indexCount; i++)
@@ -827,6 +826,9 @@ private:
         m_embree_triangle_mesh = rtcNewGeometry(m_embree_device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
         std::vector<glm::vec3> vertices(mesh->vertex_count());
+
+		m_unwrapped_mesh.vertex_colors.resize(mesh->index_count() / 3);
+
         std::vector<uint32_t>  indices(mesh->index_count());
         uint32_t               idx        = 0;
         dw::Vertex*            vertex_ptr = mesh->vertices();
@@ -835,12 +837,17 @@ private:
         for (int i = 0; i < mesh->vertex_count(); i++)
             vertices[i] = vertex_ptr[i].position;
 
+		uint32_t tri_idx = 0;
+
         for (int i = 0; i < mesh->sub_mesh_count(); i++)
         {
             dw::SubMesh& submesh = mesh->sub_meshes()[i];
 
-            for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
-                indices[idx++] = submesh.base_vertex + index_ptr[j];
+			for (int j = submesh.base_index; j < (submesh.base_index + submesh.index_count); j++)
+				indices[idx++] = submesh.base_vertex + index_ptr[j];
+	
+			for (int j = 0; j < (submesh.index_count/3); j++)
+				m_unwrapped_mesh.vertex_colors[tri_idx++] = submesh.mat->albedo_value();
         }
 
         void* data = rtcSetNewGeometryBuffer(m_embree_triangle_mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(glm::vec3), mesh->vertex_count());
@@ -1177,7 +1184,7 @@ private:
             if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
             {
                 float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-                return color + m_skybox.sample_sky(d) * sky_dir * attenuation;
+                return color;// + m_skybox.sample_sky(d) * sky_dir * attenuation;
             }
 
 			uint32_t v_idx = rayhit.hit.primID;
