@@ -1,4 +1,5 @@
 #define _USE_MATH_DEFINES
+#include <thread_pool.hpp>
 #include <application.h>
 #include <mesh.h>
 #include <camera.h>
@@ -19,6 +20,7 @@
 #include "skybox.h"
 #include "csm.h"
 
+#undef min
 #define CAMERA_FAR_PLANE 10000.0f
 #define LIGHTMAP_TEXTURE_SIZE 256
 #define LIGHTMAP_CHART_PADDING 6
@@ -81,6 +83,19 @@ struct LightmapMesh
     std::unique_ptr<dw::VertexBuffer> vbo;
     std::unique_ptr<dw::IndexBuffer>  ibo;
     std::unique_ptr<dw::VertexArray>  vao;
+};
+
+struct BakePoint
+{
+    glm::vec3  position;
+    glm::vec3  direction;
+    glm::ivec2 coord;
+};
+
+struct BakeTaskArgs
+{
+    uint32_t start_idx = 0;
+    uint32_t count     = 0;
 };
 
 class PrecomputedGI : public dw::Application
@@ -386,16 +401,35 @@ private:
 
         glFinish();
 
+        std::vector<glm::vec4> ray_positions;
+        std::vector<glm::vec4> ray_directions;
+
+        ray_positions.resize(m_lightmap_size * m_lightmap_size);
+        ray_directions.resize(m_lightmap_size * m_lightmap_size);
+
         // Copy bake sample points
         GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
         GL_CHECK_ERROR(glBindTexture(pos_dilated_texture->target(), pos_dilated_texture->id()));
-        GL_CHECK_ERROR(glGetTexImage(pos_dilated_texture->target(), 0, pos_dilated_texture->format(), pos_dilated_texture->type(), m_ray_positions.data()));
+        GL_CHECK_ERROR(glGetTexImage(pos_dilated_texture->target(), 0, pos_dilated_texture->format(), pos_dilated_texture->type(), ray_positions.data()));
 
         GL_CHECK_ERROR(glBindTexture(normal_dilated_texture->target(), normal_dilated_texture->id()));
-        GL_CHECK_ERROR(glGetTexImage(normal_dilated_texture->target(), 0, normal_dilated_texture->format(), normal_dilated_texture->type(), m_ray_directions.data()));
+        GL_CHECK_ERROR(glGetTexImage(normal_dilated_texture->target(), 0, normal_dilated_texture->format(), normal_dilated_texture->type(), ray_directions.data()));
         GL_CHECK_ERROR(glBindTexture(normal_dilated_texture->target(), 0));
 
         glFinish();
+
+        for (int y = 0; y < m_lightmap_size; y++)
+        {
+            for (int x = 0; x < m_lightmap_size; x++)
+            {
+                glm::vec3 normal   = ray_directions[m_lightmap_size * y + x];
+                glm::vec3 position = ray_positions[m_lightmap_size * y + x];
+
+                // Check if this is a valid lightmap texel
+                if (valid_texel(normal))
+                    m_bake_points.push_back({ position, normal, { x, y } });
+            }
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -424,8 +458,6 @@ private:
     void create_lightmap_buffers()
     {
         m_framebuffer.resize(m_lightmap_size * m_lightmap_size);
-        m_ray_positions.resize(m_lightmap_size * m_lightmap_size);
-        m_ray_directions.resize(m_lightmap_size * m_lightmap_size);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1030,24 +1062,13 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    glm::vec3 sample_direction(int x, int y)
+    void clear_lightmap()
     {
-        return m_ray_directions[m_lightmap_size * y + x];
-    }
-
-    // -----------------------------------------------------------------------------------------------------------------------------------
-
-    glm::vec3 sample_position(int x, int y)
-    {
-        return m_ray_positions[m_lightmap_size * y + x];
-    }
-
-    // -----------------------------------------------------------------------------------------------------------------------------------
-
-    bool valid_position(int x, int y)
-    {
-        glm::vec3 p = sample_position(x, y);
-        return !(p.x == 0.0f && p.y == 0.0f && p.z == 0.0f);
+        for (int y = 0; y < m_lightmap_size; y++)
+        {
+            for (int x = 0; x < m_lightmap_size; x++)
+                m_framebuffer[m_lightmap_size * y + x] = glm::vec4(0.0f);
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1257,42 +1278,66 @@ private:
     {
         glFinish();
 
-        float w = 1.0f / float(m_num_samples);
+        clear_lightmap();
 
-#pragma omp parallel for
-        for (int y = 0; y < m_lightmap_size; y++)
-        {
-            for (int x = 0; x < m_lightmap_size; x++)
+        dw::Task* tasks[16];
+
+        std::function<void(void*)> bake_function = [=](void* data) 
+		{
+            BakeTaskArgs* args = (BakeTaskArgs*)data;
+
+            float w = 1.0f / float(m_num_samples);
+
+            for (int i = args->start_idx; i < args->count; i++)
             {
-                glm::vec3 color    = glm::vec3(0.0f);
-                glm::vec3 normal   = sample_direction(x, y);
-                glm::vec3 position = sample_position(x, y);
+                bool      is_at_least_one_gutter = false;
+                glm::vec3 color                  = glm::vec3(0.0f);
+                glm::vec3 normal                 = m_bake_points[i].direction;
+                glm::vec3 position               = m_bake_points[i].position;
 
-                // Check if this is a valid lightmap texel
-                if (valid_texel(normal))
+                for (int sample = 0; sample < m_num_samples; sample++)
                 {
-                    bool is_at_least_one_gutter = false;
+                    bool is_gutter = false;
+                    color += path_trace(normal, position, is_gutter) * w;
 
-                    for (int sample = 0; sample < m_num_samples; sample++)
-                    {
-                        bool is_gutter = false;
-                        color += path_trace(normal, position, is_gutter) * w;
-
-                        if (is_gutter)
-                            is_at_least_one_gutter = true;
-                    }
-
-                    float alpha = 1.0f;
-
-                    if (is_at_least_one_gutter)
-                        alpha = 0.0f;
-
-                    m_framebuffer[m_lightmap_size * y + x] = glm::vec4(color, alpha);
+                    if (is_gutter)
+                        is_at_least_one_gutter = true;
                 }
-                else
-                    m_framebuffer[m_lightmap_size * y + x] = glm::vec4(0.0f);
+
+                float alpha = 1.0f;
+
+                if (is_at_least_one_gutter)
+                    alpha = 0.0f;
+
+                m_framebuffer[m_lightmap_size * m_bake_points[i].coord.y + m_bake_points[i].coord.x] = glm::vec4(color, alpha);
             }
+        };
+
+        uint32_t points_per_task = m_bake_points.size() / m_thread_pool.num_worker_threads();
+        uint32_t remaining       = m_bake_points.size();
+
+        for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
+        {
+            tasks[i]           = m_thread_pool.allocate();
+            tasks[i]->function = bake_function;
+
+            BakeTaskArgs* args = dw::task_data<BakeTaskArgs>(tasks[i]);
+
+            args->start_idx = points_per_task * i;
+            args->count     = i == (m_thread_pool.num_worker_threads() - 1) ? remaining : points_per_task;
+
+            remaining -= points_per_task;
+
+			if (i != 0)
+			{
+				m_thread_pool.add_as_child(tasks[0], tasks[i]);
+				m_thread_pool.enqueue(tasks[i]);
+			}
         }
+
+		m_thread_pool.enqueue(tasks[0]);
+
+		m_thread_pool.wait_for_one(tasks[0]);
 
         m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
 
@@ -1395,8 +1440,7 @@ private:
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
     std::unique_ptr<dw::UniformBuffer> m_csm_ubo;
 
-    std::vector<glm::vec4> m_ray_positions;
-    std::vector<glm::vec4> m_ray_directions;
+    std::vector<BakePoint> m_bake_points;
     std::vector<glm::vec4> m_framebuffer;
 
     // Camera.
@@ -1457,6 +1501,8 @@ private:
     // Camera orientation.
     float m_camera_x;
     float m_camera_y;
+
+    dw::ThreadPool m_thread_pool;
 };
 
 DW_DECLARE_MAIN(PrecomputedGI)

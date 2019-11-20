@@ -10,3 +10,6 @@
 [submodule "external/oidn"]
 	path = external/oidn
 	url = https://github.com/OpenImageDenoise/oidn.git
+[submodule "external/dwThreadPool"]
+	path = external/dwThreadPool
+	url = https://github.com/diharaw/dwThreadPool.git

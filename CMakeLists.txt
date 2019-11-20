@@ -17,10 +17,12 @@ add_subdirectory(external/dwSampleFramework)
 set(XATLAS_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/xatlas")
 set(EMBREE_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/embree/include/embree3")
 set(HOSEKSKY_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/HosekSky")
+set(THREADPOOL_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/dwThreadPool/include")
 
 include_directories("${DW_SAMPLE_FRAMEWORK_INCLUDES}"
 					"${XATLAS_INCLUDE_DIRS}"
 					"${EMBREE_INCLUDE_DIRS}"
-					"${HOSEKSKY_INCLUDE_DIRS}")
+					"${HOSEKSKY_INCLUDE_DIRS}"
+					"${THREADPOOL_INCLUDE_DIRS}")
 
 add_subdirectory(src)
