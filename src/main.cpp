@@ -95,7 +95,7 @@ struct BakePoint
 struct BakeTaskArgs
 {
     uint32_t start_idx = 0;
-    uint32_t count     = 0;
+    uint32_t end_idx   = 0;
 };
 
 class PrecomputedGI : public dw::Application
@@ -1288,7 +1288,7 @@ private:
 
             float w = 1.0f / float(m_num_samples);
 
-            for (int i = args->start_idx; i < args->count; i++)
+            for (int i = args->start_idx; i < args->end_idx; i++)
             {
                 bool      is_at_least_one_gutter = false;
                 glm::vec3 color                  = glm::vec3(0.0f);
@@ -1313,7 +1313,7 @@ private:
             }
         };
 
-        uint32_t points_per_task = m_bake_points.size() / m_thread_pool.num_worker_threads();
+        uint32_t points_per_task = ceil(float(m_bake_points.size()) / float(m_thread_pool.num_worker_threads()));
         uint32_t remaining       = m_bake_points.size();
 
         for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
@@ -1324,7 +1324,7 @@ private:
             BakeTaskArgs* args = dw::task_data<BakeTaskArgs>(tasks[i]);
 
             args->start_idx = points_per_task * i;
-            args->count     = i == (m_thread_pool.num_worker_threads() - 1) ? remaining : points_per_task;
+            args->end_idx   = args->start_idx + (i == (m_thread_pool.num_worker_threads() - 1) ? remaining : points_per_task);
 
             remaining -= points_per_task;
 
