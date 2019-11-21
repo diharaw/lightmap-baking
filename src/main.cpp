@@ -333,7 +333,7 @@ private:
         {
             uint32_t progress = m_baking_progress;
 
-			ImGui::ProgressBar(float(progress) / float(m_bake_points.size()), ImVec2(0.0f, 0.0f));
+            ImGui::ProgressBar(float(progress) / float(m_total_samples_to_bake), ImVec2(0.0f, 0.0f));
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
             ImGui::Text("Baking Progress");
         }
@@ -1078,7 +1078,7 @@ private:
         for (int y = 0; y < m_lightmap_size; y++)
         {
             for (int x = 0; x < m_lightmap_size; x++)
-                m_framebuffer[m_lightmap_size * y + x] = glm::vec4(0.0f);
+                m_framebuffer[m_lightmap_size * y + x] = glm::vec4(1.0f);
         }
     }
 
@@ -1304,6 +1304,16 @@ private:
 
                 write_lightmap();
             }
+            else
+            {
+                int current_baked_samples = m_baking_progress / m_bake_points.size();
+
+                if (current_baked_samples > m_baked_samples)
+                {
+                    m_baked_samples = current_baked_samples;
+                    m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
+				}
+            }
         }
     }
 
@@ -1320,39 +1330,37 @@ private:
         std::function<void(void*)> bake_function = [=](void* data) {
             BakeTaskArgs* args = (BakeTaskArgs*)data;
 
-            float w = 1.0f / float(m_num_samples);
-
-            for (int i = args->start_idx; i < args->end_idx; i++)
+            for (int sample = 0; sample < m_num_samples; sample++)
             {
-                bool      is_at_least_one_gutter = false;
-                glm::vec3 color                  = glm::vec3(0.0f);
-                glm::vec3 normal                 = m_bake_points[i].direction;
-                glm::vec3 position               = m_bake_points[i].position;
-
-                for (int sample = 0; sample < m_num_samples; sample++)
+                for (int i = args->start_idx; i < args->end_idx; i++)
                 {
+                    glm::vec4 current_color = m_framebuffer[m_lightmap_size * m_bake_points[i].coord.y + m_bake_points[i].coord.x];
+                    glm::vec3 color         = current_color;
+                    glm::vec3 normal        = m_bake_points[i].direction;
+                    glm::vec3 position      = m_bake_points[i].position;
+
                     bool is_gutter = false;
-                    color += path_trace(normal, position, is_gutter) * w;
+                    color += path_trace(normal, position, is_gutter) * m_sample_weight;
+
+                    float alpha = current_color.a;
 
                     if (is_gutter)
-                        is_at_least_one_gutter = true;
+                        alpha = 0.0f;
+
+                    m_framebuffer[m_lightmap_size * m_bake_points[i].coord.y + m_bake_points[i].coord.x] = glm::vec4(color, alpha);
+                    m_baking_progress++;
                 }
-
-                float alpha = 1.0f;
-
-                if (is_at_least_one_gutter)
-                    alpha = 0.0f;
-
-                m_framebuffer[m_lightmap_size * m_bake_points[i].coord.y + m_bake_points[i].coord.x] = glm::vec4(color, alpha);
-                m_baking_progress++;
             }
         };
 
         uint32_t points_per_task = ceil(float(m_bake_points.size()) / float(m_thread_pool.num_worker_threads()));
         uint32_t remaining       = m_bake_points.size();
 
-        m_baking_progress  = 0;
-        m_bake_in_progress = true;
+		m_total_samples_to_bake = m_bake_points.size() * m_num_samples;
+        m_baked_samples       = 0;
+        m_baking_progress     = 0;
+        m_bake_in_progress    = true;
+        float m_sample_weight = 1.0f / float(m_num_samples);
 
         for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
         {
@@ -1530,7 +1538,10 @@ private:
     float m_camera_x;
     float m_camera_y;
 
+    uint32_t              m_baked_samples    = 0;
+    float                 m_sample_weight    = 0.0f;
     std::atomic<uint32_t> m_baking_progress  = 0;
+    uint32_t              m_total_samples_to_bake = 0;
     dw::Task*             m_bake_parent_task = nullptr;
     dw::ThreadPool        m_thread_pool;
 };
