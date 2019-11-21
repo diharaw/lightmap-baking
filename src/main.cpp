@@ -147,6 +147,8 @@ protected:
 
     void update(double delta) override
     {
+        finish_bake();
+
         if (m_debug_gui)
             gui();
 
@@ -326,6 +328,15 @@ private:
 
         if (ImGui::Button("Bake"))
             bake_lightmap();
+
+        if (m_bake_in_progress)
+        {
+            uint32_t progress = m_baking_progress;
+
+			ImGui::ProgressBar(float(progress) / float(m_bake_points.size()), ImVec2(0.0f, 0.0f));
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+            ImGui::Text("Baking Progress");
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1274,6 +1285,30 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
+    void finish_bake()
+    {
+        if (m_bake_in_progress)
+        {
+            if (m_thread_pool.is_done(m_bake_parent_task))
+            {
+                m_bake_in_progress = false;
+
+                m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
+
+                std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
+                m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
+
+                dilate(m_lightmap_texture, m_lightmap_dilated_fbo.get());
+
+                glFinish();
+
+                write_lightmap();
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
     void bake_lightmap()
     {
         glFinish();
@@ -1282,8 +1317,7 @@ private:
 
         dw::Task* tasks[16];
 
-        std::function<void(void*)> bake_function = [=](void* data) 
-		{
+        std::function<void(void*)> bake_function = [=](void* data) {
             BakeTaskArgs* args = (BakeTaskArgs*)data;
 
             float w = 1.0f / float(m_num_samples);
@@ -1310,11 +1344,15 @@ private:
                     alpha = 0.0f;
 
                 m_framebuffer[m_lightmap_size * m_bake_points[i].coord.y + m_bake_points[i].coord.x] = glm::vec4(color, alpha);
+                m_baking_progress++;
             }
         };
 
         uint32_t points_per_task = ceil(float(m_bake_points.size()) / float(m_thread_pool.num_worker_threads()));
         uint32_t remaining       = m_bake_points.size();
+
+        m_baking_progress  = 0;
+        m_bake_in_progress = true;
 
         for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
         {
@@ -1328,27 +1366,16 @@ private:
 
             remaining -= points_per_task;
 
-			if (i != 0)
-			{
-				m_thread_pool.add_as_child(tasks[0], tasks[i]);
-				m_thread_pool.enqueue(tasks[i]);
-			}
+            if (i != 0)
+            {
+                m_thread_pool.add_as_child(tasks[0], tasks[i]);
+                m_thread_pool.enqueue(tasks[i]);
+            }
         }
 
-		m_thread_pool.enqueue(tasks[0]);
+        m_thread_pool.enqueue(tasks[0]);
 
-		m_thread_pool.wait_for_one(tasks[0]);
-
-        m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
-
-        std::unique_ptr<dw::Framebuffer> m_lightmap_dilated_fbo = std::make_unique<dw::Framebuffer>();
-        m_lightmap_dilated_fbo->attach_render_target(0, m_lightmap_dilated_texture.get(), 0, 0);
-
-        dilate(m_lightmap_texture, m_lightmap_dilated_fbo.get());
-
-        glFinish();
-
-        write_lightmap();
+        m_bake_parent_task = tasks[0];
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1479,6 +1506,7 @@ private:
     bool m_highlight_wireframe        = false;
     bool m_dilated                    = true;
     bool m_show_albedo                = true;
+    bool m_bake_in_progress           = false;
 
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
@@ -1502,7 +1530,9 @@ private:
     float m_camera_x;
     float m_camera_y;
 
-    dw::ThreadPool m_thread_pool;
+    std::atomic<uint32_t> m_baking_progress  = 0;
+    dw::Task*             m_bake_parent_task = nullptr;
+    dw::ThreadPool        m_thread_pool;
 };
 
 DW_DECLARE_MAIN(PrecomputedGI)
