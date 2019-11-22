@@ -1078,7 +1078,7 @@ private:
         for (int y = 0; y < m_lightmap_size; y++)
         {
             for (int x = 0; x < m_lightmap_size; x++)
-                m_framebuffer[m_lightmap_size * y + x] = glm::vec4(1.0f);
+                m_framebuffer[m_lightmap_size * y + x] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         }
     }
 
@@ -1305,15 +1305,7 @@ private:
                 write_lightmap();
             }
             else
-            {
-                int current_baked_samples = m_baking_progress / m_bake_points.size();
-
-                if (current_baked_samples > m_baked_samples)
-                {
-                    m_baked_samples = current_baked_samples;
-                    m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
-				}
-            }
+                m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
         }
     }
 
@@ -1357,10 +1349,9 @@ private:
         uint32_t remaining       = m_bake_points.size();
 
 		m_total_samples_to_bake = m_bake_points.size() * m_num_samples;
-        m_baked_samples       = 0;
         m_baking_progress     = 0;
         m_bake_in_progress    = true;
-        float m_sample_weight = 1.0f / float(m_num_samples);
+        m_sample_weight = 1.0f / float(m_num_samples);
 
         for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
         {
@@ -1538,7 +1529,6 @@ private:
     float m_camera_x;
     float m_camera_y;
 
-    uint32_t              m_baked_samples    = 0;
     float                 m_sample_weight    = 0.0f;
     std::atomic<uint32_t> m_baking_progress  = 0;
     uint32_t              m_total_samples_to_bake = 0;
