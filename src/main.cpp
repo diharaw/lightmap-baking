@@ -1348,10 +1348,10 @@ private:
         uint32_t points_per_task = ceil(float(m_bake_points.size()) / float(m_thread_pool.num_worker_threads()));
         uint32_t remaining       = m_bake_points.size();
 
-		m_total_samples_to_bake = m_bake_points.size() * m_num_samples;
-        m_baking_progress     = 0;
-        m_bake_in_progress    = true;
-        m_sample_weight = 1.0f / float(m_num_samples);
+        m_total_samples_to_bake = m_bake_points.size() * m_num_samples;
+        m_baking_progress       = 0;
+        m_bake_in_progress      = true;
+        m_sample_weight         = 1.0f / float(m_num_samples);
 
         for (int i = 0; i < m_thread_pool.num_worker_threads(); i++)
         {
@@ -1529,10 +1529,10 @@ private:
     float m_camera_x;
     float m_camera_y;
 
-    float                 m_sample_weight    = 0.0f;
-    std::atomic<uint32_t> m_baking_progress  = 0;
+    float                 m_sample_weight         = 0.0f;
+    std::atomic<uint32_t> m_baking_progress       = 0;
     uint32_t              m_total_samples_to_bake = 0;
-    dw::Task*             m_bake_parent_task = nullptr;
+    dw::Task*             m_bake_parent_task      = nullptr;
     dw::ThreadPool        m_thread_pool;
 };
 
