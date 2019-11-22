@@ -13,7 +13,7 @@ layout(location = 5) in vec3 VS_IN_Bitangent;
 // UNIFORMS ---------------------------------------------------------
 // ------------------------------------------------------------------
 
-layout(std430, binding = 0) buffer GlobalUniforms
+layout(std140) uniform GlobalUniforms
 {
     mat4 view_proj;
     mat4 light_view_proj;

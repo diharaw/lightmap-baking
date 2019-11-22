@@ -21,7 +21,8 @@
 #include "csm.h"
 
 #undef min
-#define CAMERA_FAR_PLANE 10000.0f
+#define CAMERA_FAR_PLANE 100.0f
+#define DEBUG_CAMERA_FAR_PLANE 10000.0f
 #define LIGHTMAP_TEXTURE_SIZE 256
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
@@ -35,6 +36,8 @@ struct GlobalUniforms
     glm::mat4 light_view_proj;
     DW_ALIGNED(16)
     glm::vec4 cam_pos;
+    DW_ALIGNED(16)
+    glm::mat4 crop[8];
 };
 
 struct FarBound
@@ -157,8 +160,7 @@ protected:
 
         m_csm.update(m_main_camera.get(), m_csm_uniforms.direction);
 
-        update_global_uniforms(m_global_uniforms);
-        update_csm_uniforms(m_csm_uniforms);
+        update_uniforms();
 
         render_depth_scene();
         render_lit_scene();
@@ -184,6 +186,14 @@ protected:
                     visualize_atlas_submeshes();
             }
         }
+
+		if (m_debug_mode)
+		{
+			render_debug_view();
+
+			// Render debug draw.
+			m_debug_draw.render(nullptr, m_width, m_height, m_debug_mode ? m_debug_camera->m_view_projection : m_main_camera->m_view_projection);
+		}
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -201,6 +211,7 @@ protected:
     {
         // Override window resized method to update camera projection.
         m_main_camera->update_projection(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height));
+		m_debug_camera->update_projection(60.0f, 0.1f, DEBUG_CAMERA_FAR_PLANE, float(m_width) / float(m_height));
 
         create_textures();
     }
@@ -309,6 +320,7 @@ private:
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
         ImGui::Checkbox("Dilated", &m_dilated);
         ImGui::Checkbox("Show Color", &m_show_albedo);
+        ImGui::Checkbox("Debug Camera", &m_debug_mode);
 
         if (m_visualize_atlas)
         {
@@ -322,6 +334,7 @@ private:
             m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
         }
 
+		ImGui::InputFloat("Bias", &m_shadow_bias);
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
         ImGui::InputInt("Num Bounces", &m_num_bounces);
@@ -337,6 +350,38 @@ private:
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
             ImGui::Text("Baking Progress");
         }
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void render_debug_view()
+    {
+        for (int i = 0; i < m_csm.m_split_count; i++)
+        {
+            FrustumSplit& split = m_csm.frustum_splits()[i];
+
+            // Render frustum splits.
+            m_debug_draw.line(split.corners[0], split.corners[3], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[3], split.corners[2], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[2], split.corners[1], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[1], split.corners[0], glm::vec3(1.0f));
+
+            m_debug_draw.line(split.corners[4], split.corners[7], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[7], split.corners[6], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[6], split.corners[5], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[5], split.corners[4], glm::vec3(1.0f));
+
+            m_debug_draw.line(split.corners[0], split.corners[4], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[1], split.corners[5], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[2], split.corners[6], glm::vec3(1.0f));
+            m_debug_draw.line(split.corners[3], split.corners[7], glm::vec3(1.0f));
+
+            // Render shadow frustums.
+            m_debug_draw.frustum(m_csm.split_view_proj(i), glm::vec3(1.0f, 0.0f, 0.0f));
+        }
+
+        if (m_debug_mode)
+            m_debug_draw.frustum(m_main_camera->m_projection, m_main_camera->m_view, glm::vec3(0.0f, 1.0f, 0.0f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -477,7 +522,7 @@ private:
     {
         m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
 
-        m_csm.initialize(m_pssm_lambda, m_near_offset, m_cascade_count, m_shadow_map_size, m_main_camera.get(), m_width, m_height, m_csm_uniforms.direction);
+        m_csm.initialize(m_pssm_lambda, 0.0f, m_cascade_count, m_shadow_map_size, m_main_camera.get(), m_width, m_height, m_csm_uniforms.direction);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -495,9 +540,7 @@ private:
         {
             glEnable(GL_DEPTH_TEST);
             glDisable(GL_BLEND);
-
-            glEnable(GL_CULL_FACE);
-            glCullFace(GL_FRONT);
+            glDisable(GL_CULL_FACE);
 
             m_csm.framebuffers()[i]->bind();
 
@@ -505,22 +548,19 @@ private:
 
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClearDepth(1.0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(GL_DEPTH_BUFFER_BIT);
 
             // Bind shader program.
             m_shadow_map_program->use();
 
             // Bind uniform buffers.
             m_global_ubo->bind_base(0);
-            m_csm_ubo->bind_base(1);
 
             m_shadow_map_program->set_uniform("u_CascadeIndex", i);
 
             // Draw scene.
             render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
         }
-
-        render_scene(nullptr, m_shadow_map_program, 0, 0, m_csm.shadow_map_size(), m_csm.shadow_map_size(), GL_FRONT);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -556,8 +596,6 @@ private:
                     DW_LOG_FATAL("Failed to create Shader Program");
                     return false;
                 }
-
-                m_lightmap_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
             {
@@ -576,8 +614,6 @@ private:
                     DW_LOG_FATAL("Failed to create Shader Program");
                     return false;
                 }
-
-                m_visualize_submeshes_program->uniform_block_binding("GlobalUniforms", 0);
             }
 
             {
@@ -598,6 +634,7 @@ private:
                 }
 
                 m_shadow_map_program->uniform_block_binding("GlobalUniforms", 0);
+                m_shadow_map_program->uniform_block_binding("CSMUniforms", 1);
             }
 
             {
@@ -909,9 +946,13 @@ private:
 
     void create_camera()
     {
-        m_main_camera = std::make_unique<dw::Camera>(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height), glm::vec3(150.0f, 20.0f, 0.0f), glm::vec3(-1.0f, 0.0, 0.0f));
+        m_main_camera = std::make_unique<dw::Camera>(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height), glm::vec3(50.0f, 20.0f, 0.0f), glm::vec3(-1.0f, 0.0, 0.0f));
         m_main_camera->set_rotatation_delta(glm::vec3(0.0f, -90.0f, 0.0f));
         m_main_camera->update();
+
+		m_debug_camera = std::make_unique<dw::Camera>(60.0f, 0.1f, DEBUG_CAMERA_FAR_PLANE, float(m_width) / float(m_height), glm::vec3(50.0f, 20.0f, 0.0f), glm::vec3(-1.0f, 0.0, 0.0f));
+        m_debug_camera->set_rotatation_delta(glm::vec3(0.0f, -90.0f, 0.0f));
+        m_debug_camera->update();
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -975,11 +1016,14 @@ private:
         // Bind shader program.
         program->use();
 
+		program->set_uniform("u_Bias", m_shadow_bias);
+
         if (program->set_uniform("s_ShadowMap", 1))
             m_csm.shadow_map()->bind(1);
 
         // Bind uniform buffers.
         m_global_ubo->bind_base(0);
+        m_csm_ubo->bind_base(1);
 
         // Draw scene.
         render_mesh(m_unwrapped_mesh, m_transform, program);
@@ -1379,19 +1423,24 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void update_global_uniforms(const GlobalUniforms& global)
+    void update_uniforms()
     {
+        // Update CSM farbounds.
+        m_csm_uniforms.num_cascades = m_csm.frustum_split_count();
+
+        for (int i = 0; i < m_csm.frustum_split_count(); i++)
+        {
+            m_csm_uniforms.far_bounds[i].far_bound = m_csm.far_bound(i);
+            m_csm_uniforms.texture_matrices[i]     = m_csm.texture_matrix(i);
+            m_global_uniforms.crop[i]              = m_csm.split_view_proj(i);
+        }
+
         void* ptr = m_global_ubo->map(GL_WRITE_ONLY);
-        memcpy(ptr, &global, sizeof(GlobalUniforms));
+        memcpy(ptr, &m_global_uniforms, sizeof(GlobalUniforms));
         m_global_ubo->unmap();
-    }
 
-    // -----------------------------------------------------------------------------------------------------------------------------------
-
-    void update_csm_uniforms(const CSMUniforms& csm)
-    {
-        void* ptr = m_csm_ubo->map(GL_WRITE_ONLY);
-        memcpy(ptr, &csm, sizeof(CSMUniforms));
+		ptr = m_csm_ubo->map(GL_WRITE_ONLY);
+        memcpy(ptr, &m_csm_uniforms, sizeof(CSMUniforms));
         m_csm_ubo->unmap();
     }
 
@@ -1409,6 +1458,9 @@ private:
     void update_camera()
     {
         dw::Camera* current = m_main_camera.get();
+
+		if (m_debug_mode)
+            current = m_debug_camera.get();
 
         float forward_delta = m_heading_speed * m_delta;
         float right_delta   = m_sideways_speed * m_delta;
@@ -1472,6 +1524,7 @@ private:
     // Camera.
     LightmapMesh                m_unwrapped_mesh;
     std::unique_ptr<dw::Camera> m_main_camera;
+    std::unique_ptr<dw::Camera> m_debug_camera;
 
     GlobalUniforms m_global_uniforms;
     CSMUniforms    m_csm_uniforms;
@@ -1515,15 +1568,15 @@ private:
     Skybox    m_skybox;
 
     // Cascaded Shadow Mapping.
+    float m_shadow_bias = 0.001f;
     CSM m_csm;
 
     // Default shadow options.
     int   m_depth_mips      = 0;
-    bool  m_ssdm            = false;
     int   m_shadow_map_size = 2048;
     int   m_cascade_count   = 4;
     float m_pssm_lambda     = 0.3;
-    float m_near_offset     = 250.0f;
+    bool  m_debug_mode      = false;
 
     // Camera orientation.
     float m_camera_x;

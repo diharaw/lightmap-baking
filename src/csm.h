@@ -33,7 +33,7 @@ struct CSM
     glm::mat4        m_crop_matrices[MAX_FRUSTUM_SPLITS]; // crop * proj * view
     glm::mat4        m_proj_matrices[MAX_FRUSTUM_SPLITS]; // crop * proj * light_view * inv_view
     glm::mat4        m_texture_matrices[MAX_FRUSTUM_SPLITS];
-    bool             m_stable_pssm = true;
+    bool             m_stable_pssm = false;
 
     CSM();
     ~CSM();
