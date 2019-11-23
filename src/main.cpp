@@ -23,10 +23,11 @@
 #undef min
 #define CAMERA_FAR_PLANE 100.0f
 #define DEBUG_CAMERA_FAR_PLANE 10000.0f
-#define LIGHTMAP_TEXTURE_SIZE 256
+#define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
 #define LIGHTMAP_BOUNCES 2
+#define SHADOW_MAP_SIZE 1024
 
 struct GlobalUniforms
 {
@@ -141,7 +142,7 @@ protected:
         initialize_csm();
 
         m_transform = glm::mat4(1.0f);
-        m_transform = glm::scale(m_transform, glm::vec3(10.0f));
+        m_transform = glm::scale(m_transform, glm::vec3(0.1f));
 
         return true;
     }
@@ -162,7 +163,7 @@ protected:
 
         update_uniforms();
 
-        render_depth_scene();
+        render_cascaded_shadows();
         render_lit_scene();
 
         m_skybox.render(nullptr, m_width, m_height, m_main_camera->m_projection, m_main_camera->m_view);
@@ -522,7 +523,7 @@ private:
     {
         m_csm_uniforms.direction = glm::vec4(m_light_direction, 0.0f);
 
-        m_csm.initialize(m_pssm_lambda, 0.0f, m_cascade_count, m_shadow_map_size, m_main_camera.get(), m_width, m_height, m_csm_uniforms.direction);
+        m_csm.initialize(m_pssm_lambda, 250.0f, m_cascade_count, m_shadow_map_size, m_main_camera.get(), m_width, m_height, m_csm_uniforms.direction);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -534,7 +535,7 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void render_depth_scene()
+    void render_cascaded_shadows()
     {
         for (int i = 0; i < m_csm.m_split_count; i++)
         {
@@ -561,6 +562,32 @@ private:
             // Draw scene.
             render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
         }
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+	void render_shadows()
+    {
+		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
+		glDisable(GL_CULL_FACE);
+
+		m_shadow_map_fbo->bind();
+
+		glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClearDepth(1.0);
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		// Bind shader program.
+		m_shadow_map_program->use();
+
+		// Bind uniform buffers.
+		m_global_ubo->bind_base(0);
+
+		// Draw scene.
+		render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -702,11 +729,15 @@ private:
 
     void create_textures()
     {
+        m_shadow_map               = std::make_unique<dw::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
         m_lightmap_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
         m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
         m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+
+		m_shadow_map_fbo = std::make_unique<dw::Framebuffer>();
+        m_shadow_map_fbo->attach_depth_stencil_target(m_shadow_map.get(), 0, 0);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -724,7 +755,7 @@ private:
 
     bool load_scene()
     {
-        dw::Mesh* mesh = dw::Mesh::load("mesh/cornell_box.obj");
+        dw::Mesh* mesh = dw::Mesh::load("mesh/sponza.obj");
 
         if (!mesh)
         {
@@ -772,7 +803,7 @@ private:
 
         for (int mesh_idx = 0; mesh_idx < atlas->meshCount; mesh_idx++)
         {
-            dw::SubMesh& sub = mesh->sub_meshes()[mesh_idx];
+            LightmapSubMesh& sub = m_unwrapped_mesh.submeshes[mesh_idx];
 
             sub.base_index  = index_count;
             sub.base_vertex = vertex_count;
@@ -1018,8 +1049,11 @@ private:
 
 		program->set_uniform("u_Bias", m_shadow_bias);
 
-        if (program->set_uniform("s_ShadowMap", 1))
-            m_csm.shadow_map()->bind(1);
+		if (program->set_uniform("s_ShadowMap", 1))
+		{
+			//m_shadow_map->bind(1);
+			m_csm.shadow_map()->bind(1);
+		}
 
         // Bind uniform buffers.
         m_global_ubo->bind_base(0);
@@ -1512,6 +1546,8 @@ private:
     std::unique_ptr<dw::Program> m_mesh_program;
     std::unique_ptr<dw::Program> m_shadow_map_program;
 
+	std::unique_ptr<dw::Framebuffer> m_shadow_map_fbo;
+	std::unique_ptr<dw::Texture2D> m_shadow_map;
     std::unique_ptr<dw::Texture2D> m_lightmap_texture;
     std::unique_ptr<dw::Texture2D> m_lightmap_dilated_texture;
 
