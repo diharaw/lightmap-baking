@@ -18,19 +18,19 @@ in vec4 FS_IN_NDCFragPos;
 // UNIFORMS ---------------------------------------------------------
 // ------------------------------------------------------------------
 
-layout(std140) uniform CSMUniforms
-{
-    mat4  texture_matrices[8];
-    vec4  direction;
-    int   num_cascades;
-    float far_bounds[8];
-};
-
 uniform int u_ShowColor;
 uniform vec3 u_Color;
+uniform vec3 u_Direction;
 uniform sampler2D s_Lightmap;
-uniform sampler2DArray s_ShadowMap;
-uniform float u_Bias;
+uniform sampler2D s_ShadowMap;
+uniform float u_LightBias;
+
+layout(std140) uniform GlobalUniforms
+{
+    mat4 view_proj;
+    mat4 light_view_proj;
+    vec4 cam_pos;
+};
 
 // ------------------------------------------------------------------
 // FUNCTIONS  -------------------------------------------------------
@@ -59,26 +59,21 @@ vec3 exposed_color(vec3 color)
 
 // ------------------------------------------------------------------
 
-float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
+float shadow_occlussion(vec3 p)
 {
-    int   index = 0;
+   // Transform frag position into Light-space.
+    vec4 light_space_pos = light_view_proj * vec4(p, 1.0);
 
-    // Find shadow cascade.
-    for (int i = 0; i < num_cascades - 1; i++)
-    {
-        if (frag_depth > far_bounds[i])
-            index = i + 1;
-    }
-
-    // Transform frag position into Light-space.
-    vec4 light_space_pos = texture_matrices[index] * vec4(FS_IN_WorldPos, 1.0);
-
-    float current_depth = light_space_pos.z;
-
-    float bias = u_Bias;
-
-    float pcfDepth = texture(s_ShadowMap, vec3(light_space_pos.xy, float(index))).r;
-    float shadow = current_depth - bias > pcfDepth ? 1.0 : 0.0;
+    vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+    // transform to [0,1] range
+    proj_coords = proj_coords * 0.5 + 0.5;
+    // get closest depth value from light's perspective (using [0,1] range fragPosLight as coords)
+    float closest_depth = texture(s_ShadowMap, proj_coords.xy).r;
+    // get depth of current fragment from light's perspective
+    float current_depth = proj_coords.z;
+    // check whether current frag pos is in shadow
+    float bias   = u_LightBias;
+    float shadow = current_depth - bias > closest_depth ? 1.0 : 0.0;
 
     return 1.0 - shadow;
 }
@@ -90,17 +85,17 @@ float shadow_occlussion(float frag_depth, vec3 n, vec3 l)
 void main()
 {
     vec3 n = normalize(FS_IN_Normal);
-    vec3 l = -direction.xyz;
+    vec3 l = -u_Direction;
 
     float frag_depth = (FS_IN_NDCFragPos.z / FS_IN_NDCFragPos.w) * 0.5 + 0.5;
-    float shadow     = shadow_occlussion(frag_depth, n, l);
+    float shadow     = shadow_occlussion(FS_IN_WorldPos);
 
     vec3 color = exposed_color(texture(s_Lightmap, FS_IN_LightmapUV).rgb);
 
     vec3 final_color = linear_to_srgb(color);
 
     if (u_ShowColor == 1)
-        final_color += shadow * u_Color;
+        final_color += shadow * u_Color * clamp(dot(n, l), 0.0, 1.0);
 
     FS_OUT_Color = final_color;
 }

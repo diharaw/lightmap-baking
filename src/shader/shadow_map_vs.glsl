@@ -18,7 +18,6 @@ layout(std140) uniform GlobalUniforms
     mat4 view_proj;
     mat4 light_view_proj;
     vec4 cam_pos;
-    mat4 crop[8];
 };
 
 uniform mat4 u_Model;
@@ -30,7 +29,7 @@ uniform int  u_CascadeIndex;
 
 void main()
 {
-    gl_Position = crop[u_CascadeIndex] * u_Model * vec4(VS_IN_Position, 1.0);
+    gl_Position = light_view_proj * u_Model * vec4(VS_IN_Position, 1.0);
 }
 
 // ------------------------------------------------------------------
