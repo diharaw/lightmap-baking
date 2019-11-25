@@ -19,6 +19,7 @@ in vec4 FS_IN_NDCFragPos;
 // ------------------------------------------------------------------
 
 uniform vec3 u_Color;
+uniform vec3 u_LightColor;
 uniform vec3 u_Direction;
 uniform sampler2D s_Lightmap;
 uniform sampler2D s_ShadowMap;
@@ -160,7 +161,7 @@ void main()
         vec3 L = -u_Direction;
         vec3 H = normalize(V + L);
     
-        vec3 radiance = vec3(1.0);
+        vec3 radiance = u_LightColor;
 
         // Cook-Torrance BRDF
         float NDF = distribution_ggx(N, H, u_Roughness);   
@@ -191,9 +192,9 @@ void main()
     vec3 irradiance = texture(s_Lightmap, FS_IN_LightmapUV).rgb;
     vec3 diffuse      = irradiance * u_Color;
 
-    vec3 ambient = (kD * diffuse) * 0.3 * shadow;
+    vec3 ambient = (kD * diffuse);
     
-    vec3 color = ambient + Lo;
+    vec3 color = ambient + Lo * shadow;
 
     vec3 final_color = linear_to_srgb(exposed_color(color));
 

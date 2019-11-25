@@ -290,7 +290,6 @@ private:
 
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
         ImGui::Checkbox("Dilated", &m_dilated);
-        ImGui::Checkbox("Show Color", &m_show_albedo);
 
         if (m_visualize_atlas)
         {
@@ -896,9 +895,11 @@ private:
                     m_lightmap_texture->bind(0);
             }
 
-            program->set_uniform("u_ShowColor", (int)m_show_albedo);
+            program->set_uniform("u_Roughness", m_roughness);
+            program->set_uniform("u_Metallic", m_metallic);
             program->set_uniform("u_Color", submesh.color);
             program->set_uniform("u_Direction", m_light_direction);
+            program->set_uniform("u_LightColor", m_light_color);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -1465,7 +1466,6 @@ private:
     bool m_highlight_submeshes        = false;
     bool m_highlight_wireframe        = false;
     bool m_dilated                    = true;
-    bool m_show_albedo                = true;
     bool m_bake_in_progress           = false;
 
     std::default_random_engine            m_generator;
@@ -1475,6 +1475,10 @@ private:
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
     Skybox    m_skybox;
+
+	// Material
+    float m_roughness = 1.0f;
+    float m_metallic  = 0.0f;
 
     // Shadow Mapping.
     float m_shadow_bias = 0.001f;
