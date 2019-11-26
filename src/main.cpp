@@ -622,8 +622,8 @@ private:
 
     void create_textures()
     {
-        m_shadow_map               = std::make_unique<dw::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-        m_lightmap_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
+        m_shadow_map       = std::make_unique<dw::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+        m_lightmap_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
@@ -1217,13 +1217,13 @@ private:
             m_lightmap_dilated_texture = std::unique_ptr<dw::Texture2D>(ptr);
             return true;
         }
-		else
-		{
-			m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
-			m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-			
-			return false;
-		}   
+        else
+        {
+            m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
+            m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+
+            return false;
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
