@@ -92,7 +92,7 @@ protected:
     {
         m_distribution = std::uniform_real_distribution<float>(0.0f, 0.9999999f);
 
-		m_light_target              = glm::vec3(0.0f);
+        m_light_target              = glm::vec3(0.0f);
         glm::vec3 default_light_dir = glm::normalize(glm::vec3(0.0f, 0.9770f, 0.5000f));
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
@@ -300,7 +300,7 @@ private:
         if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
             m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
 
-		ImGui::InputFloat("Bias", &m_shadow_bias);
+        ImGui::InputFloat("Bias", &m_shadow_bias);
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
         ImGui::InputInt("Num Bounces", &m_num_bounces);
@@ -459,28 +459,28 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-	void render_shadow_map()
+    void render_shadow_map()
     {
-		glEnable(GL_DEPTH_TEST);
-		glDisable(GL_BLEND);
-		glDisable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
 
-		m_shadow_map_fbo->bind();
+        m_shadow_map_fbo->bind();
 
-		glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClearDepth(1.0);
-		glClear(GL_DEPTH_BUFFER_BIT);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearDepth(1.0);
+        glClear(GL_DEPTH_BUFFER_BIT);
 
-		// Bind shader program.
-		m_shadow_map_program->use();
+        // Bind shader program.
+        m_shadow_map_program->use();
 
-		// Bind uniform buffers.
-		m_global_ubo->bind_base(0);
+        // Bind uniform buffers.
+        m_global_ubo->bind_base(0);
 
-		// Draw scene.
-		render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
+        // Draw scene.
+        render_mesh(m_unwrapped_mesh, m_transform, m_shadow_map_program);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -624,12 +624,10 @@ private:
     {
         m_shadow_map               = std::make_unique<dw::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
         m_lightmap_texture         = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
-        m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGBA32F, GL_RGBA, GL_FLOAT);
 
         m_lightmap_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-        m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
-		m_shadow_map_fbo = std::make_unique<dw::Framebuffer>();
+        m_shadow_map_fbo = std::make_unique<dw::Framebuffer>();
         m_shadow_map_fbo->attach_depth_stencil_target(m_shadow_map.get(), 0, 0);
     }
 
@@ -889,7 +887,7 @@ private:
 
             if (program->set_uniform("s_Lightmap", 0))
             {
-                if (m_dilated)
+                if (m_dilated && !m_bake_in_progress)
                     m_lightmap_dilated_texture->bind(0);
                 else
                     m_lightmap_texture->bind(0);
@@ -938,11 +936,11 @@ private:
         // Bind shader program.
         program->use();
 
-		program->set_uniform("u_LightBias", m_shadow_bias);
+        program->set_uniform("u_LightBias", m_shadow_bias);
 
-		if (program->set_uniform("s_ShadowMap", 1))
-			m_shadow_map->bind(1);
-	
+        if (program->set_uniform("s_ShadowMap", 1))
+            m_shadow_map->bind(1);
+
         // Bind uniform buffers.
         m_global_ubo->bind_base(0);
 
@@ -1212,40 +1210,27 @@ private:
 
     bool load_cached_lightmap()
     {
-        FILE* lm = fopen("lightmap.raw", "r");
+        auto ptr = dw::Texture2D::create_from_files("lightmap.hdr");
 
-        if (lm)
+        if (ptr)
         {
-            size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
-
-            fread(m_framebuffer.data(), n, 1, lm);
-
-            m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
-
-            fclose(lm);
-
+            m_lightmap_dilated_texture = std::unique_ptr<dw::Texture2D>(ptr);
             return true;
         }
-        else
-            return false;
+		else
+		{
+			m_lightmap_dilated_texture = std::make_unique<dw::Texture2D>(m_lightmap_size, m_lightmap_size, 1, 1, 1, GL_RGB32F, GL_RGB, GL_FLOAT);
+			m_lightmap_dilated_texture->set_wrapping(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+			
+			return false;
+		}   
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     void write_lightmap()
     {
-        FILE* lm = fopen("lightmap.raw", "wb");
-
-        size_t n = sizeof(float) * m_lightmap_size * m_lightmap_size * 4;
-
-        GL_CHECK_ERROR(glActiveTexture(GL_TEXTURE0));
-        GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), m_lightmap_dilated_texture->id()));
-        GL_CHECK_ERROR(glGetTexImage(m_lightmap_dilated_texture->target(), 0, m_lightmap_dilated_texture->format(), m_lightmap_dilated_texture->type(), m_framebuffer.data()));
-        GL_CHECK_ERROR(glBindTexture(m_lightmap_dilated_texture->target(), 0));
-
-        fwrite(m_framebuffer.data(), n, 1, lm);
-
-        fclose(lm);
+        m_lightmap_dilated_texture->save_to_disk("lightmap", 0, 0);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -1270,7 +1255,7 @@ private:
                 write_lightmap();
             }
             else
-                m_lightmap_dilated_texture->set_data(0, 0, m_framebuffer.data());
+                m_lightmap_texture->set_data(0, 0, m_framebuffer.data());
         }
     }
 
@@ -1350,7 +1335,7 @@ private:
         glm::mat4 view             = glm::lookAt(light_camera_pos, m_light_target, glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj             = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, 1.0f, LIGHT_FAR_PLANE);
 
-		m_global_uniforms.light_view_proj = proj * view;
+        m_global_uniforms.light_view_proj = proj * view;
 
         void* ptr = m_global_ubo->map(GL_WRITE_ONLY);
         memcpy(ptr, &m_global_uniforms, sizeof(GlobalUniforms));
@@ -1422,10 +1407,10 @@ private:
     std::unique_ptr<dw::Program> m_mesh_program;
     std::unique_ptr<dw::Program> m_shadow_map_program;
 
-	std::unique_ptr<dw::Framebuffer> m_shadow_map_fbo;
-	std::unique_ptr<dw::Texture2D> m_shadow_map;
-    std::unique_ptr<dw::Texture2D> m_lightmap_texture;
-    std::unique_ptr<dw::Texture2D> m_lightmap_dilated_texture;
+    std::unique_ptr<dw::Framebuffer> m_shadow_map_fbo;
+    std::unique_ptr<dw::Texture2D>   m_shadow_map;
+    std::unique_ptr<dw::Texture2D>   m_lightmap_texture;
+    std::unique_ptr<dw::Texture2D>   m_lightmap_dilated_texture;
 
     std::unique_ptr<dw::UniformBuffer> m_global_ubo;
 
@@ -1446,7 +1431,7 @@ private:
     float m_heading_speed      = 0.0f;
     float m_sideways_speed     = 0.0f;
     float m_camera_sensitivity = 0.05f;
-    float m_camera_speed       = 0.2f;
+    float m_camera_speed       = 0.05f;
     float m_offset             = 0.1f;
     bool  m_debug_gui          = true;
 
@@ -1471,17 +1456,17 @@ private:
     std::default_random_engine            m_generator;
     std::uniform_real_distribution<float> m_distribution;
 
-	glm::vec3 m_light_target;
+    glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
     Skybox    m_skybox;
 
-	// Material
+    // Material
     float m_roughness = 1.0f;
     float m_metallic  = 0.0f;
 
     // Shadow Mapping.
-    float m_shadow_bias = 0.001f;
+    float     m_shadow_bias = 0.001f;
     glm::mat4 m_light_view_proj;
 
     // Camera orientation.
