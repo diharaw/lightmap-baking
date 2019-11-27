@@ -301,7 +301,7 @@ private:
         if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
             m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
 
-		ImGui::InputFloat("Ambient Intensity", &m_ambient_intensity);
+		ImGui::SliderFloat("Ambient Intensity", &m_ambient_intensity, 0.0f, 1.0f);
         ImGui::InputFloat("Bias", &m_shadow_bias);
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
@@ -1468,7 +1468,7 @@ private:
     // Material
     float m_roughness = 1.0f;
     float m_metallic  = 0.0f;
-    float m_ambient_intensity = 0.3f;
+    float m_ambient_intensity = 0.1f;
     bool  m_indirect_lighting       = true;
 
     // Shadow Mapping.
