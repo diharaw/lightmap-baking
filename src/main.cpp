@@ -20,15 +20,15 @@
 #include "skybox.h"
 
 #undef min
-#define CAMERA_FAR_PLANE 100.0f
+#define CAMERA_FAR_PLANE 200.0f
 #define DEBUG_CAMERA_FAR_PLANE 10000.0f
 #define LIGHTMAP_TEXTURE_SIZE 1024
 #define LIGHTMAP_CHART_PADDING 6
 #define LIGHTMAP_SPP 1
 #define LIGHTMAP_BOUNCES 2
 #define SHADOW_MAP_SIZE 1024
-#define LIGHT_FAR_PLANE 450.0f
-#define SHADOW_MAP_EXTENTS 50.0f
+#define LIGHT_FAR_PLANE 650.0f
+#define SHADOW_MAP_EXTENTS 75.0f
 
 struct GlobalUniforms
 {
@@ -645,7 +645,7 @@ private:
 
     bool load_scene()
     {
-        dw::Mesh* mesh = dw::Mesh::load("mesh/cornell_box.obj");
+        dw::Mesh* mesh = dw::Mesh::load("mesh/GI_Test_Scene.obj");
 
         if (!mesh)
         {
