@@ -26,6 +26,8 @@ uniform sampler2D s_ShadowMap;
 uniform float     u_LightBias;
 uniform float     u_Roughness;
 uniform float     u_Metallic;
+uniform float     u_AmbientIntensity;
+uniform int       u_IndirectLighting;
 
 layout(std140) uniform GlobalUniforms
 {
@@ -192,8 +194,10 @@ void main()
     vec3 diffuse    = irradiance * u_Color;
 
     vec3 ambient = (kD * diffuse);
+    vec3 color = Lo * shadow;
 
-    vec3 color = ambient + Lo * shadow;
+    if (u_IndirectLighting == 1)
+        color += ambient * u_AmbientIntensity;
 
     vec3 final_color = linear_to_srgb(exposed_color(color));
 

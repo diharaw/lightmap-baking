@@ -290,6 +290,7 @@ private:
 
         ImGui::Checkbox("Visualize Atlas", &m_visualize_atlas);
         ImGui::Checkbox("Dilated", &m_dilated);
+        ImGui::Checkbox("Indirect Lighting", &m_indirect_lighting);
 
         if (m_visualize_atlas)
         {
@@ -300,6 +301,7 @@ private:
         if (ImGui::InputFloat3("Light Direction", &m_light_direction.x))
             m_skybox.initialize(-m_light_direction, glm::vec3(0.5f), 2.0f);
 
+		ImGui::InputFloat("Ambient Intensity", &m_ambient_intensity);
         ImGui::InputFloat("Bias", &m_shadow_bias);
         ImGui::InputFloat("Offset", &m_offset);
         ImGui::InputInt("Num Samples", &m_num_samples);
@@ -898,6 +900,8 @@ private:
             program->set_uniform("u_Color", submesh.color);
             program->set_uniform("u_Direction", m_light_direction);
             program->set_uniform("u_LightColor", m_light_color);
+            program->set_uniform("u_IndirectLighting", (int)m_indirect_lighting);
+            program->set_uniform("u_AmbientIntensity", m_ambient_intensity);
 
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
@@ -1178,7 +1182,7 @@ private:
             if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
             {
                 float sky_dir = d.y < 0.0f ? 0.0f : 1.0f;
-                return color; // + m_skybox.sample_sky(d) * sky_dir * attenuation;
+                return color + m_skybox.sample_sky(d) * sky_dir * attenuation;
             }
 
             uint32_t v_idx = rayhit.hit.primID;
@@ -1464,6 +1468,8 @@ private:
     // Material
     float m_roughness = 1.0f;
     float m_metallic  = 0.0f;
+    float m_ambient_intensity = 0.3f;
+    bool  m_indirect_lighting       = true;
 
     // Shadow Mapping.
     float     m_shadow_bias = 0.001f;
