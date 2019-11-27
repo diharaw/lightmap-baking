@@ -194,7 +194,7 @@ void main()
     vec3 diffuse    = irradiance * u_Color;
 
     vec3 ambient = (kD * diffuse);
-    vec3 color = Lo * shadow;
+    vec3 color   = Lo * shadow;
 
     if (u_IndirectLighting == 1)
         color += ambient * u_AmbientIntensity;
