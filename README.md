@@ -5,7 +5,7 @@ An OpenGL sample for generating path traced indirect diffuse lightmaps for real-
 
 ## Screenshots
 
-![Lightmaps](data/screenshot_1.JPG)
+![Lightmaps](data/gi_1.jpg)
 
 ## Dependencies
 * [dwSampleFramework](https://github.com/diharaw/dwSampleFramework) 
