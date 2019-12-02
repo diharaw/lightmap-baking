@@ -2,6 +2,7 @@
 
 #include <ogl.h>
 #include <vector>
+#include <memory>
 
 struct ArHosekSkyModelState;
 

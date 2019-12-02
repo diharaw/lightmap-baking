@@ -7,9 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 set(PRECOMPUTEDGI_SOURCES ${PROJECT_SOURCE_DIR}/src/main.cpp 
                           ${PROJECT_SOURCE_DIR}/src/skybox.h 
-                          ${PROJECT_SOURCE_DIR}/src/skybox.cpp 
-                          ${PROJECT_SOURCE_DIR}/src/csm.h 
-                          ${PROJECT_SOURCE_DIR}/src/csm.cpp)
+                          ${PROJECT_SOURCE_DIR}/src/skybox.cpp)
 
 set(XATLAS_SOURCES ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.cpp
                    ${PROJECT_SOURCE_DIR}/external/xatlas/xatlas.h)
@@ -32,8 +30,6 @@ target_link_libraries(PrecomputedGI embree)
 
 if (NOT APPLE)
     add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/shader $<TARGET_FILE_DIR:PrecomputedGI>/shader)
-    add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/mesh $<TARGET_FILE_DIR:PrecomputedGI>/mesh)
-    add_custom_command(TARGET PrecomputedGI POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/texture $<TARGET_FILE_DIR:PrecomputedGI>/texture)
 endif()
 
 if(CLANG_FORMAT_EXE)
