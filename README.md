@@ -11,7 +11,7 @@ An OpenGL sample for generating path traced indirect diffuse lightmaps for real-
 * [dwSampleFramework](https://github.com/diharaw/dwSampleFramework) 
 * [embree](https://https://github.com/embree/embree) 
 * [Open Image Denoise](https://github.com/OpenImageDenoise/oidn) 
-* dwThreadPool
+* [dwThreadPool](https://github.com/diharaw/dwThreadPool)
 
 ## License
 ```
